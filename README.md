@@ -1,45 +1,91 @@
-# 🧠 Voice AI Chatbox (Raspberry Pi 5)
+# Raspberry Pi KI-Chatbox (Sprachassistent)
 
-Eine **standalone KI-Chatbox** für den Heimgebrauch auf Basis eines **Raspberry Pi 5**,  
-mit **Spracheingabe**, **Sprachausgabe**, **Statusanzeige** und **Anbindung an Cloud-KI (z. B. ChatGPT)** –  
-**ohne externen Monitor**.
+DIY-Sprachassistent / KI-Chatbox auf Basis eines **Raspberry Pi 5 (8 GB)** mit **ReSpeaker XVF3800 4‑Mic Array (USB)**.
+Das System arbeitet sprachbasiert (Sprache rein, Sprache raus) und nutzt Cloud‑KI‑Dienste (z. B. OpenAI/ChatGPT).
+Ein externer Monitor ist nicht erforderlich.
 
----
-
-## 📌 Projektziele
-
-- Sprachbasierte Interaktion („Smart-Speaker-ähnlich“)
-- Kein Display erforderlich (nur LEDs / optional OLED)
-- Einfache Bedienung (Push-to-Talk / Wake-Word)
-- Modulare, erweiterbare Architektur
-- Fokus auf **Verständlichkeit, Stabilität, Bastelbarkeit**
+> Dieses Repo ist bewusst **dokumentations‑ und praxisorientiert**: erst Hardware + Verdrahtung + Betrieb, dann Code.
 
 ---
 
-## 🗂 Projektstruktur
+## Features (Zielbild)
 
-```text
-voice-ai-chatbox/
+- Push‑to‑Talk per Taster (kein Wake‑Word nötig)
+- Sprachaufnahme → Speech‑to‑Text (Cloud, z. B. Whisper via OpenAI)
+- Chat‑Antwort (Cloud‑LLM, z. B. OpenAI Chat Completions)
+- Sprachausgabe (TTS, Cloud – OpenAI TTS)
+- Statusanzeige per **RGB‑LED (WS2812/NeoPixel)** und optional **OLED (I2C)**
+
+---
+
+## Projektstruktur
+
+```
+raspi-ai-chatbox-de/
 ├── README.md
-├── docs/
-│   ├── wiring.md
-│   ├── gpio-map.md
-│   └── hardware.md
-├── hardware/
-│   ├── bom.md
-│   └── enclosure.md
-├── software/
-│   ├── install.sh
-│   ├── config.yaml
-│   └── requirements.txt
+├── requirements.txt
+├── .env.example
 ├── src/
 │   ├── main.py
-│   ├── audio/
-│   │   ├── stt.py
-│   │   └── tts.py
-│   ├── ai/
-│   │   └── chat_backend.py
-│   └── ui/
-│       └── status_led.py
-└── LICENSE
+│   ├── audio_io.py
+│   ├── led_status.py
+│   ├── gpio_inputs.py
+│   └── config.py
+├── docs/
+│   ├── hardware.md
+│   ├── wiring.md
+│   ├── software.md
+│   ├── gpio-mapping.md
+│   └── troubleshooting.md
+└── scripts/
+    ├── install.sh
+    └── chatbox.service
+```
 
+---
+
+## Schnellstart (kurz)
+
+1. **Raspberry Pi OS (64‑bit) installieren**
+2. Repo klonen
+3. Installation:
+   ```bash
+   cd raspi-ai-chatbox-de
+   bash scripts/install.sh
+   ```
+4. Konfiguration:
+   ```bash
+   cp .env.example .env
+   nano .env
+   ```
+5. Starten:
+   ```bash
+   source .venv/bin/activate
+   python -m src.main
+   ```
+
+Für Autostart siehe **docs/software.md**.
+
+---
+
+## Dokumentation
+
+- **docs/hardware.md** – Hardwareliste & Hinweise
+- **docs/wiring.md** – Verdrahtungsübersicht
+- **docs/gpio-mapping.md** – GPIO‑Belegung (Taster, LED, OLED)
+- **docs/software.md** – Installation, Audio‑Setup, Autostart (systemd)
+- **docs/troubleshooting.md** – typische Fehler & Lösungen
+
+---
+
+## Sicherheit / Betriebshinweise
+
+- Verstärker **nicht** aus GPIO‑Pins speisen.
+- Alle Module müssen eine **gemeinsame Masse (GND)** haben.
+- Erst mit niedriger Lautstärke testen, Mikrofon & Lautsprecher räumlich trennen (Echo).
+
+---
+
+## Lizenz
+
+MIT (kannst du bei Bedarf ergänzen).

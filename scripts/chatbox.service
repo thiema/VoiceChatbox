@@ -1,0 +1,19 @@
+[Unit]
+Description=Raspberry Pi KI-Chatbox
+After=network-online.target sound.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/pi/raspi-ai-chatbox-de
+EnvironmentFile=/home/pi/raspi-ai-chatbox-de/.env
+ExecStart=/home/pi/raspi-ai-chatbox-de/.venv/bin/python -m src.main
+Restart=on-failure
+RestartSec=2
+
+# Audio permissions
+User=pi
+Group=pi
+
+[Install]
+WantedBy=multi-user.target
