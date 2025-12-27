@@ -18,3 +18,18 @@
 ## OpenAI Fehler (401/429)
 - API‑Key prüfen
 - Rate limits / Guthaben / Projekt‑Berechtigungen prüfen
+
+## Programm endet mit „Speicherzugriffsfehler“ (Segmentation fault)
+Das ist typischerweise ein nativer Treiber/Library-Crash (kein Python-Traceback), häufig ausgelöst durch **rpi_ws281x**
+(NeoPixel/WS2812) auf Pi 5 / neuem Kernel / Debian-Varianten.
+
+**Workaround (empfohlen):**
+1) In `.env` NeoPixel deaktivieren:
+```
+USE_NEOPIXEL=false
+```
+2) In dieser Repo-Version wird `rpi_ws281x` nur noch **lazy** importiert, wenn NeoPixel aktiv ist.
+
+Optional (wenn du NeoPixel später willst):
+- Nutze einen **Level-Shifter** (74AHCT125) und saubere 5V Versorgung.
+- Prüfe alternative Treiber (SPI-basierte WS2812-Interfaces) oder aktuelle Pi-5-kompatible Forks.
