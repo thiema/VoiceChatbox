@@ -17,3 +17,12 @@
   ```bash
   pip install -r requirements.txt
   ```
+
+## PTT reagiert nicht / löst zufällig aus
+- Prüfe, dass ein Ende wirklich auf **GPIO17** steckt und das andere auf **GND**.
+- Ohne Pull-up würde der Pin „floaten“ – hier ist Pull-up aktiv, daher sollte es stabil sein.
+- Bei schlechtem Kontakt (Kabel nur leicht berührt) kann Prellen auftreten → halte den Kontakt sauber.
+- Teste mit:
+  ```bash
+  python -m src.main --test-ptt
+  ```

@@ -28,3 +28,32 @@ GPIO17 → Taster → GND (Pull-Up intern)
 
 ## 4) JST-Kabel
 JST nur nötig, wenn ein Modul JST-Stecker hat. Für LEDs/Taster auf Breadboard: keine JST nötig.
+
+
+## Push-to-Talk ohne echten Taster (Variante 1: improvisierter Kontakt)
+
+Wenn du keinen Taster hast, kannst du den Push-to-Talk **provisorisch** als "Kontakt" bauen:
+
+### Was du brauchst
+- 2× Dupont-Kabel (Male/Female je nach Breakout/Breadboard)
+- optional: Krokodilklemmen oder eine Büroklammer als „Brücke“
+
+### So geht’s (empfohlen)
+1) Stecke ein Kabel auf **GPIO17** (Pin 11) am Breakout/Breadboard.
+2) Stecke ein zweites Kabel auf **GND** (Pin 9 oder irgendein GND-Pin).
+3) **PTT auslösen:** Berühre die freien Enden der beiden Kabel kurz **miteinander** (oder verbinde sie mit einer Büroklammer).
+   - Verbunden = „Taste gedrückt“
+   - Getrennt = „Taste losgelassen“
+
+### Wichtig
+- Im Code ist `pull_up=True` aktiv → der GPIO ist im Ruhezustand HIGH und wird beim Kontakt nach GND LOW.
+- Achte darauf, **nur GPIO17 mit GND** zu verbinden – nicht mit 5V/3.3V kurzschließen.
+- Für stabileren Kontakt: Kleb die Kabelenden auf ein Stück Karton und nutze eine Büroklammer als Schalter.
+
+### Test
+Nutze den PTT-Testmodus:
+```bash
+source .venv/bin/activate
+python -m src.main --test-ptt
+```
+Dann siehst du in der Konsole „PRESSED/RELEASED“ und die grüne LED signalisiert den Druck.

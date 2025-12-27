@@ -25,3 +25,31 @@ python -m src.main --test-leds
 source .venv/bin/activate
 python -m src.main
 ```
+
+### Modus-Auswahl per Sprache (beim Start)
+Nach dem Start fragt die Chatbox per Stimme:
+- **Echo**
+- **Chatbox**
+
+Du hältst den Taster gedrückt und sagst das gewünschte Wort.
+
+### Echo Modus
+- Deine Sprache wird per STT erkannt.
+- Die Box spricht den erkannten Text wieder aus (TTS).
+
+### Chatbox Modus
+- STT → LLM → TTS (normale Chat-Antwort)
+
+### Optional: Modus per CLI erzwingen
+```bash
+python -m src.main --mode echo
+python -m src.main --mode chatbox
+```
+
+## Push-to-Talk ohne echten Taster (Improvisation)
+Siehe **docs/wiring.md** (Variante 1: improvisierter Kontakt).
+
+## PTT-Test
+```bash
+python -m src.main --test-ptt
+```
