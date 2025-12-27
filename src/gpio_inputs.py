@@ -1,17 +1,30 @@
 from __future__ import annotations
-from gpiozero import Button
+import os
+from gpiozero import Button, Device
+
+def _configure_pin_factory():
+    factory = os.getenv("GPIOZERO_PIN_FACTORY")
+    if not factory:
+        return
+    factory = factory.strip().lower()
+    if factory == "lgpio":
+        from gpiozero.pins.lgpio import LGPIOFactory
+        Device.pin_factory = LGPIOFactory()
+    elif factory in ("rpigpio", "rpi"):
+        from gpiozero.pins.rpigpio import RPiGPIOFactory
+        Device.pin_factory = RPiGPIOFactory()
+    elif factory == "pigpio":
+        from gpiozero.pins.pigpio import PiGPIOFactory
+        Device.pin_factory = PiGPIOFactory()
 
 class PushToTalk:
     """Push-to-talk button wired to GND with internal pull-up."""
     def __init__(self, gpio_pin: int):
-        # pull_up=True means released -> 1, pressed -> 0 (to GND)
+        _configure_pin_factory()
         self.button = Button(gpio_pin, pull_up=True, bounce_time=0.03)
 
     def wait_for_press(self):
         self.button.wait_for_press()
-
-    def wait_for_release(self):
-        self.button.wait_for_release()
 
     @property
     def is_pressed(self) -> bool:

@@ -6,3 +6,4 @@ gpiozero>=2.0.1
 rpi_ws281x>=5.0.0
 luma.oled>=3.13.0
 Pillow>=10.4.0
+lgpio>=0.2.2

@@ -19,6 +19,10 @@ class Settings:
     model_tts: str
     tts_voice: str
 
+    use_gpio: bool
+    use_neopixel: bool
+    gpiozero_pin_factory: str | None
+
     gpio_ptt: int
     gpio_neopixel: int
     neopixel_count: int
@@ -38,10 +42,16 @@ def load_settings() -> Settings:
         model_stt=os.getenv("OPENAI_MODEL_STT", "gpt-4o-mini-transcribe"),
         model_tts=os.getenv("OPENAI_MODEL_TTS", "gpt-4o-mini-tts"),
         tts_voice=os.getenv("OPENAI_TTS_VOICE", "alloy"),
+
+        use_gpio=_get_bool("USE_GPIO", True),
+        use_neopixel=_get_bool("USE_NEOPIXEL", True),
+        gpiozero_pin_factory=(os.getenv("GPIOZERO_PIN_FACTORY") or None),
+
         gpio_ptt=int(os.getenv("GPIO_PTT", "17")),
         gpio_neopixel=int(os.getenv("GPIO_NEOPIXEL", "18")),
         neopixel_count=int(os.getenv("NEOPIXEL_COUNT", "1")),
         use_oled=_get_bool("USE_OLED", True),
+
         audio_input_device=os.getenv("AUDIO_INPUT_DEVICE") or None,
         audio_output_device=os.getenv("AUDIO_OUTPUT_DEVICE") or None,
     )

@@ -1,29 +1,31 @@
 # Software (Installation, Betrieb, Autostart)
 
-## Ziel
+## Wichtige Klarstellung: Wo entsteht `.venv`?
 
-- Raspberry Pi OS (64‑bit)
-- Python 3.11+
-- Audio: USB‑Mic (XVF3800) + USB‑DAC oder I2S‑DAC
-- Cloud: OpenAI API (STT, Chat, TTS)
+- Das Verzeichnis **`.venv/` wird nicht mitgeliefert** und gehört typischerweise **nicht** ins Git-Repo.
+- `.venv/` entsteht **auf dem Zielsystem (deinem Raspberry Pi / deiner Chatbox)**, sobald du `scripts/install.sh` ausführst.
+
+Warum? Eine virtuelle Umgebung enthält binäre Pakete und Pfade, die vom System abhängen (CPU/OS/Python-Version).
 
 ---
 
-## 1) Installation (automatisch)
+## Empfohlene Basis
 
-Im Projekt liegt ein Install-Skript:
+**Empfehlung:** Raspberry Pi OS (64-bit) für Pi 5.  
+Auf generischem Debian (z. B. Debian 13 „trixie“) kann GPIO/NeoPixel deutlich mehr Handarbeit erfordern.
+
+---
+
+## 1) Installation (auf dem Zielsystem)
+
+Auf dem Raspberry Pi:
 
 ```bash
 cd raspi-ai-chatbox-de
 bash scripts/install.sh
 ```
 
-Was das Skript macht:
-- Systempakete installieren (Audio/Build‑Tools)
-- Python venv anlegen
-- Requirements installieren
-- Beispiel‑.env erzeugen (falls nicht vorhanden)
-- Optional: systemd Service installieren
+Das Skript legt **`.venv/`** an und installiert alle Python-Abhängigkeiten.
 
 ---
 
@@ -37,34 +39,9 @@ nano .env
 Setze mindestens:
 - `OPENAI_API_KEY=...`
 
-Optional:
-- `OPENAI_MODEL_CHAT=...`
-- `OPENAI_MODEL_STT=...`
-- `OPENAI_MODEL_TTS=...`
-
 ---
 
-## 3) Audio-Geräte prüfen
-
-Liste Geräte:
-```bash
-arecord -l
-aplay -l
-```
-
-Teste Mic:
-```bash
-arecord -D default -f S16_LE -r 16000 -c1 test.wav -d 3
-```
-
-Teste Ausgabe:
-```bash
-speaker-test -t wav
-```
-
----
-
-## 4) Starten (manuell)
+## 3) Starten (manuell)
 
 ```bash
 source .venv/bin/activate
@@ -73,31 +50,27 @@ python -m src.main
 
 ---
 
+## 4) GPIO/NeoPixel bei Problemen deaktivieren
+
+Wenn du auf einem Nicht-Pi testest oder GPIO noch nicht eingerichtet ist:
+
+```
+USE_GPIO=false
+```
+
+Wenn NeoPixel Probleme macht:
+
+```
+USE_NEOPIXEL=false
+```
+
+---
+
 ## 5) Autostart (systemd)
 
-Installieren (vom Script erledigbar):
 ```bash
 sudo cp scripts/chatbox.service /etc/systemd/system/chatbox.service
 sudo systemctl daemon-reload
 sudo systemctl enable --now chatbox.service
-```
-
-Logs:
-```bash
 journalctl -u chatbox.service -f
 ```
-
----
-
-## 6) Bedienung
-
-- **Taster gedrückt halten** → Aufnahme läuft
-- **Taster loslassen** → Upload STT → Chat → TTS → Ausgabe
-- Status wird per LED/OLED angezeigt
-
----
-
-## 7) Hinweise
-
-- Für bestes Ergebnis: Lautsprecher nicht direkt neben das Mic‑Array.
-- Beginne mit niedriger Lautstärke.
