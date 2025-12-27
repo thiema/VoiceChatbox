@@ -1,54 +1,30 @@
 # Verdrahtung (Übersicht)
 
-Diese Datei beschreibt die Verdrahtung **konzeptionell**. Für Pin‑Details siehe **gpio-mapping.md**.
+Für Pin-Details siehe **docs/gpio-mapping.md**.
 
 ## 1) Stromversorgung
-
-- Raspberry Pi 5: über USB‑C Netzteil
-- Verstärker:
-  - bei PAM8403: **5V** Versorgung (idealerweise separate 5V‑Quelle 2–3A bei hoher Lautstärke)
-  - GND muss mit Pi‑GND verbunden sein (**gemeinsame Masse**)
+- Raspberry Pi 5: USB‑C Netzteil
+- Verstärker (z. B. PAM8403): 5V Versorgung (idealerweise separate 5V-Quelle), **gemeinsame Masse** mit Pi
 
 ## 2) Audio
+- Mikrofon-Array (XVF3800) → USB → Raspberry Pi
+- Raspberry Pi → USB-DAC (oder I2S-DAC) → Verstärker → Lautsprecher
 
-### Mikrofon
-- XVF3800 → per **USB** an Raspberry Pi
+## 3) GPIO / Breakout / Breadboard
+Du nutzt einen **T‑Typ GPIO Adapter**.
 
-### Lautsprecher-Ausgabe (Empfehlung)
-- Raspberry Pi → **USB‑DAC** (oder I2S‑DAC) → Line‑Out → Verstärker (PAM8403) → Lautsprecher
+### Schienen
+- Pi‑GND → GND-Schiene (blau)
 
-Alternative (sehr einfach):
-- Raspberry Pi → **aktive Lautsprecher** (USB oder 3.5mm vom DAC)
+### 3× Status-LEDs
+Pro LED:
+- GPIO → 330Ω → LED Anode
+- LED Kathode → GND
 
-## 3) GPIO / Breadboard (SYB‑46)
+Pins: Rot=GPIO16, Gelb=GPIO20, Grün=GPIO21.
 
-Du hast ein SYB‑46 mit:
-- je einer X‑ und Y‑Schiene oben/unten
-- 5 Reihenblöcke A‑E und F‑J
+### Push-to-Talk Taster
+GPIO17 → Taster → GND (Pull-Up intern)
 
-**Vorschlag:**
-- Nutze die obere rote Schiene als +3.3V (oder +5V wenn nötig)
-- Nutze die obere blaue Schiene als GND
-- Spiegel das unten ggf. (z. B. für Amp‑GND / LED‑GND)
-
-### Typische Verbindungen
-- Pi GND → GND‑Schiene
-- Pi 3.3V → +3.3V‑Schiene (für OLED, Taster Pull‑up, Logik)
-- NeoPixel:
-  - Datenpin → GPIO
-  - VCC → 5V (NeoPixel bevorzugt 5V)
-  - GND → GND
-  - **Level‑Shift empfohlen** (3.3V → 5V) für zuverlässige NeoPixel‑Daten
-
-## 4) JST‑Kabel – wann brauchst du sie?
-
-Das hängt vom jeweiligen Modul ab:
-
-- **NeoPixel/LED‑Strips** haben oft **JST‑SM 3‑Pin**
-- Manche Verstärker‑Boards nutzen **JST‑PH/XH 2‑Pin** für Strom oder Speaker
-
-Wenn deine Module **nur Schraubklemmen** oder **Dupont‑Header** haben, brauchst du keine JST‑Kabel.
-
-Empfehlung: Lege dir bereit:
-- **JST‑SM 3‑Pin (female/male)** für NeoPixel‑Module/Strips
-- **JST‑PH 2‑Pin** oder **JST‑XH 2‑Pin** (je nach Board) für kleine Stromverbindungen
+## 4) JST-Kabel
+JST nur nötig, wenn ein Modul JST-Stecker hat. Für LEDs/Taster auf Breadboard: keine JST nötig.

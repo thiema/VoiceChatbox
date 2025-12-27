@@ -1,10 +1,12 @@
 from __future__ import annotations
 import os
+import sys
 import tempfile
 from openai import OpenAI
 
 from .config import load_settings
-from .led_status import NeoPixelStatus, Status
+from .gpio_inputs import PushToTalk
+from .led_status import LedStatus, Status
 from .audio_io import record_while_pressed
 
 def _bytes_to_tempfile(data: bytes, suffix: str) -> str:
@@ -14,51 +16,46 @@ def _bytes_to_tempfile(data: bytes, suffix: str) -> str:
         f.write(data)
     return path
 
+def test_leds():
+    s = load_settings()
+    leds = LedStatus(s.gpio_led_red, s.gpio_led_yellow, s.gpio_led_green, enabled=True)
+    from time import sleep
+    print("LED-Test: Rot"); leds.set(Status.ERROR); sleep(1)
+    print("LED-Test: Gelb"); leds.set(Status.THINKING); sleep(1)
+    print("LED-Test: Grün"); leds.set(Status.SPEAKING); sleep(1)
+    print("LED-Test: Aus"); leds.set(Status.IDLE); sleep(0.2)
+    print("OK")
+
 def main():
+    if "--test-leds" in sys.argv:
+        test_leds()
+        return
+
     settings = load_settings()
+    if not settings.use_gpio:
+        print("USE_GPIO=false – dieser Build nutzt GPIO für Button/LEDs. Bitte USE_GPIO=true setzen.")
+        return
+
     client = OpenAI(api_key=settings.openai_api_key)
 
-    led = NeoPixelStatus(settings.gpio_neopixel, settings.neopixel_count, enabled=settings.use_neopixel)
-    led.start()
-    led.set(Status.IDLE)
+    leds = LedStatus(settings.gpio_led_red, settings.gpio_led_yellow, settings.gpio_led_green, enabled=True)
+    leds.set(Status.IDLE)
 
-    if settings.use_gpio:
-        from .gpio_inputs import PushToTalk
-        ptt = PushToTalk(settings.gpio_ptt)
-        print("KI-Chatbox bereit. Taster gedrückt halten zum Sprechen. Strg+C zum Beenden.")
-
-        def wait_start():
-            ptt.wait_for_press()
-
-        def record():
-            return record_while_pressed(lambda: ptt.is_pressed)
-    else:
-        print("KI-Chatbox bereit. (GPIO deaktiviert) Nimmt 5 Sekunden auf und verarbeitet dann.")
-        def wait_start():
-            input("ENTER zum Starten...")
-        def record():
-            import sounddevice as sd, io, wave
-            samplerate = 16000
-            audio = sd.rec(int(5 * samplerate), samplerate=samplerate, channels=1, dtype="int16")
-            sd.wait()
-            buf = io.BytesIO()
-            with wave.open(buf, "wb") as wf:
-                wf.setnchannels(1); wf.setsampwidth(2); wf.setframerate(samplerate)
-                wf.writeframes(audio.tobytes())
-            return buf.getvalue()
+    ptt = PushToTalk(settings.gpio_ptt)
+    print("KI-Chatbox bereit. Taster gedrückt halten zum Sprechen. Strg+C zum Beenden.")
 
     while True:
         try:
-            wait_start()
-            led.set(Status.LISTENING)
+            ptt.wait_for_press()
+            leds.set(Status.LISTENING)
 
-            wav_bytes = record()
-            led.set(Status.THINKING)
+            wav_bytes = record_while_pressed(lambda: ptt.is_pressed)
+            leds.set(Status.THINKING)
 
             wav_path = _bytes_to_tempfile(wav_bytes, ".wav")
             try:
-                with open(wav_path, "rb") as f:
-                    stt = client.audio.transcriptions.create(model=settings.model_stt, file=f)
+                with open(wav_path, "rb") as f_audio:
+                    stt = client.audio.transcriptions.create(model=settings.model_stt, file=f_audio)
                 user_text = (stt.text or "").strip()
             finally:
                 try:
@@ -67,7 +64,7 @@ def main():
                     pass
 
             if not user_text:
-                led.set(Status.IDLE)
+                leds.set(Status.IDLE)
                 continue
 
             chat = client.chat.completions.create(
@@ -79,7 +76,7 @@ def main():
             )
             answer = (chat.choices[0].message.content or "").strip()
 
-            led.set(Status.SPEAKING)
+            leds.set(Status.SPEAKING)
             speech = client.audio.speech.create(model=settings.model_tts, voice=settings.tts_voice, input=answer)
             mp3_path = _bytes_to_tempfile(speech.read(), ".mp3")
 
@@ -89,16 +86,16 @@ def main():
             except OSError:
                 pass
 
-            led.set(Status.IDLE)
+            leds.set(Status.IDLE)
 
         except KeyboardInterrupt:
-            led.set(Status.IDLE)
+            leds.set(Status.IDLE)
             print("\nBeendet.")
             break
         except Exception as e:
             print("Fehler:", e)
-            led.blink_error()
-            led.set(Status.IDLE)
+            leds.blink_error()
+            leds.set(Status.IDLE)
 
 if __name__ == "__main__":
     main()

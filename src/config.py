@@ -20,13 +20,12 @@ class Settings:
     tts_voice: str
 
     use_gpio: bool
-    use_neopixel: bool
     gpiozero_pin_factory: str | None
 
     gpio_ptt: int
-    gpio_neopixel: int
-    neopixel_count: int
-    use_oled: bool
+    gpio_led_red: int
+    gpio_led_yellow: int
+    gpio_led_green: int
 
     audio_input_device: str | None
     audio_output_device: str | None
@@ -44,13 +43,12 @@ def load_settings() -> Settings:
         tts_voice=os.getenv("OPENAI_TTS_VOICE", "alloy"),
 
         use_gpio=_get_bool("USE_GPIO", True),
-        use_neopixel=_get_bool("USE_NEOPIXEL", True),
         gpiozero_pin_factory=(os.getenv("GPIOZERO_PIN_FACTORY") or None),
 
         gpio_ptt=int(os.getenv("GPIO_PTT", "17")),
-        gpio_neopixel=int(os.getenv("GPIO_NEOPIXEL", "18")),
-        neopixel_count=int(os.getenv("NEOPIXEL_COUNT", "1")),
-        use_oled=_get_bool("USE_OLED", True),
+        gpio_led_red=int(os.getenv("GPIO_LED_RED", "16")),
+        gpio_led_yellow=int(os.getenv("GPIO_LED_YELLOW", "20")),
+        gpio_led_green=int(os.getenv("GPIO_LED_GREEN", "21")),
 
         audio_input_device=os.getenv("AUDIO_INPUT_DEVICE") or None,
         audio_output_device=os.getenv("AUDIO_OUTPUT_DEVICE") or None,

@@ -1,29 +1,32 @@
-# GPIO Mapping (Vorschlag)
+# GPIO Mapping (empfohlen) – 3 Status-LEDs + Push-to-Talk
 
-> Du kannst die Pins natürlich ändern. Wichtig ist: konsistent bleiben.
+Du nutzt einen **T‑Typ GPIO Adapter (40‑Pin)** auf ein Breakout/Breadboard (SYB‑46).
+Hier ist ein Vorschlag, der mit **normalen LEDs** funktioniert (keine NeoPixel).
 
-## Raspberry Pi 40‑Pin Header – verwendete Signale
+## Status-LEDs (3× LED)
 
-### Status-LED (WS2812B / NeoPixel)
-- **DATA:** GPIO18 (Pin 12)  *(PWM‑fähig, häufig genutzt)*
-- **5V:** Pin 2 oder 4
-- **GND:** Pin 6
+- **ROT** = Fehler
+- **GELB** = „Denken“ (STT/Chat läuft)
+- **GRÜN** = „Sprechen“ / „Bereit“
 
-> Empfehlung: Datenleitung über **Level Shifter** (z. B. 74AHCT125) oder zumindest 330Ω in Serie.
-> Zusätzlich: 1000µF Elko zwischen 5V/GND nahe am NeoPixel.
+### Pins (BCM / physisch)
+- **ROT:** GPIO16 (Pin 36)
+- **GELB:** GPIO20 (Pin 38)
+- **GRÜN:** GPIO21 (Pin 40)
 
-### Push-to-Talk Taster (Momentary NO)
+### Verdrahtung pro LED
+- GPIO → **220Ω–330Ω Widerstand** → LED **Anode** (langes Bein)
+- LED **Kathode** (kurzes Bein) → **GND-Schiene**
+
+## Push-to-Talk Taster (Momentary NO)
 - **GPIO:** GPIO17 (Pin 11)
-- **GND:** Pin 9
-- Software nutzt **internen Pull‑Up** → Taster nach GND schaltet.
+- **GND:** Pin 9 (oder beliebiger GND)
 
-### OLED Display (SSD1306, I2C)
-- **SDA:** GPIO2 / SDA1 (Pin 3)
-- **SCL:** GPIO3 / SCL1 (Pin 5)
-- **VCC:** 3.3V (Pin 1)  *(meist ausreichend; manche Module können 5V – 3.3V bevorzugt)*
-- **GND:** Pin 6
+Software nutzt **internen Pull-Up** → Taster nach GND schaltet.
 
-## Hinweis zu 5V vs 3.3V
+## Breadboard Schienen (SYB-46)
+- Obere blaue Schiene: **GND**
+- Obere rote Schiene: **3.3V** (optional)
 
-- GPIO‑Logik ist **3.3V**.
-- NeoPixel läuft meist besser mit **5V** Versorgung; Datenlevel‑Shift empfohlen.
+## Hinweis
+- LEDs immer mit Widerstand betreiben.

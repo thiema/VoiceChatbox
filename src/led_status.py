@@ -1,6 +1,6 @@
 from __future__ import annotations
-import time
 from enum import Enum
+from gpiozero import LED
 
 class Status(Enum):
     IDLE = "idle"
@@ -9,73 +9,40 @@ class Status(Enum):
     SPEAKING = "speaking"
     ERROR = "error"
 
-class NeoPixelStatus:
-    """NeoPixel Status LED (WS2812).
+class LedStatus:
+    """3-LED Statusanzeige (Rot/Gelb/Grün)."""
 
-    Hinweis:
-    - `rpi_ws281x` kann auf Pi 5 / neuem Kernel / Debian-Varianten *nicht unterstützt* sein
-      und sogar beim Programmende segfaulten.
-    - Darum importieren wir `rpi_ws281x` **lazy** erst, wenn NeoPixel wirklich aktiviert ist.
-    """
-
-    def __init__(self, gpio_pin: int, count: int = 1, brightness: int = 40, enabled: bool = True):
-        self.gpio_pin = gpio_pin
-        self.count = count
-        self.brightness = brightness
+    def __init__(self, gpio_red: int, gpio_yellow: int, gpio_green: int, enabled: bool = True):
         self.enabled = enabled
-        self.strip = None
-        self._Color = None
+        self.red = LED(gpio_red) if enabled else None
+        self.yellow = LED(gpio_yellow) if enabled else None
+        self.green = LED(gpio_green) if enabled else None
+        self.set(Status.IDLE)
 
-    def start(self):
+    def all_off(self):
         if not self.enabled:
             return
-
-        try:
-            from rpi_ws281x import PixelStrip, Color  # type: ignore
-            self._Color = Color
-        except Exception as e:
-            print(f"[WARN] NeoPixel deaktiviert (Import fehlgeschlagen): {e}")
-            self.enabled = False
-            return
-
-        try:
-            self.strip = PixelStrip(self.count, self.gpio_pin, 800000, 10, False, self.brightness, 0)
-            self.strip.begin()
-            self.set(Status.IDLE)
-        except Exception as e:
-            self.strip = None
-            print(f"[WARN] NeoPixel deaktiviert (Init fehlgeschlagen): {e}")
-            self.enabled = False
-
-    def _set_all(self, color):
-        if not self.strip:
-            return
-        for i in range(self.count):
-            self.strip.setPixelColor(i, color)
-        self.strip.show()
+        self.red.off(); self.yellow.off(); self.green.off()
 
     def set(self, status: Status):
-        if not self.strip or self._Color is None:
+        if not self.enabled:
             return
-
-        Color = self._Color
+        self.all_off()
         if status == Status.IDLE:
-            self._set_all(Color(0, 0, 0))
-        elif status == Status.LISTENING:
-            self._set_all(Color(0, 0, 40))
-        elif status == Status.THINKING:
-            self._set_all(Color(40, 20, 0))
-        elif status == Status.SPEAKING:
-            self._set_all(Color(0, 40, 0))
-        elif status == Status.ERROR:
-            self._set_all(Color(40, 0, 0))
-
-    def blink_error(self, times: int = 3):
-        if not self.strip or self._Color is None:
             return
-        Color = self._Color
+        if status == Status.LISTENING:
+            self.green.on()
+        elif status == Status.THINKING:
+            self.yellow.on()
+        elif status == Status.SPEAKING:
+            self.green.on()
+        elif status == Status.ERROR:
+            self.red.on()
+
+    def blink_error(self, times: int = 3, on_time: float = 0.2, off_time: float = 0.2):
+        if not self.enabled:
+            return
+        from time import sleep
         for _ in range(times):
-            self._set_all(Color(40, 0, 0))
-            time.sleep(0.2)
-            self._set_all(Color(0, 0, 0))
-            time.sleep(0.2)
+            self.red.on(); sleep(on_time)
+            self.red.off(); sleep(off_time)
