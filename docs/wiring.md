@@ -57,3 +57,19 @@ source .venv/bin/activate
 python -m src.main --test-ptt
 ```
 Dann siehst du in der Konsole „PRESSED/RELEASED“ und die grüne LED signalisiert den Druck.
+
+## OLED (0.91" / SSD1306, 4 Pins) anschließen
+- **VCC** → 3.3V (Pin 1) *(empfohlen)*
+- **GND** → GND (z. B. Pin 6)
+- **SDA** → **SDA1** (Pin 3 / GPIO2)
+- **SCL** → **SCL1** (Pin 5 / GPIO3)
+
+I2C Scan:
+```bash
+sudo i2cdetect -y 1
+```
+Typische Adressen: **0x3C** oder **0x3D**.
+
+Falls leer:
+- auch `sudo i2cdetect -y 13` und `sudo i2cdetect -y 14` probieren
+- I2C in `raspi-config` aktivieren + reboot

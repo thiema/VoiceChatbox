@@ -107,6 +107,10 @@ def main():
     if "--test-ptt" in sys.argv:
         test_ptt()
         return
+    if "--test-oled" in sys.argv:
+        from .oled_test import run_oled_test
+        run_oled_test()
+        return
 
     forced_mode = None
     if "--mode" in sys.argv:

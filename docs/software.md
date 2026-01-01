@@ -53,3 +53,20 @@ Siehe **docs/wiring.md** (Variante 1: improvisierter Kontakt).
 ```bash
 python -m src.main --test-ptt
 ```
+
+## OLED Test (SSD1306, 4-Pin I2C)
+Auf vielen Breakout-Boards steht statt GPIO2/GPIO3 einfach **SDA1** und **SCL1** – das ist dasselbe:
+- SDA1 = GPIO2 (Pin 3)
+- SCL1 = GPIO3 (Pin 5)
+
+Test:
+```bash
+source .venv/bin/activate
+python -m src.main --test-oled
+```
+
+Adresse/Bus erzwingen (falls nötig):
+```
+OLED_I2C_BUS=1
+OLED_I2C_ADDR=0x3C
+```
