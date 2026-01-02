@@ -70,3 +70,17 @@ Adresse/Bus erzwingen (falls nötig):
 OLED_I2C_BUS=1
 OLED_I2C_ADDR=0x3C
 ```
+
+### Wenn dein Display SH1106 ist
+Falls auf dem OLED trotz erkannter Adresse (z. B. 0x3C) nichts erscheint, ist es sehr oft **SH1106**.
+
+In `.env`:
+```
+OLED_DRIVER=sh1106
+OLED_I2C_BUS=1
+OLED_I2C_ADDR=0x3C
+```
+Dann:
+```bash
+python -m src.main --test-oled
+```

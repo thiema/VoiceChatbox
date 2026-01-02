@@ -73,3 +73,18 @@ Typische Adressen: **0x3C** oder **0x3D**.
 Falls leer:
 - auch `sudo i2cdetect -y 13` und `sudo i2cdetect -y 14` probieren
 - I2C in `raspi-config` aktivieren + reboot
+
+### Treiber-Hinweis (wichtig!)
+Viele 0.91" OLEDs sind **SH1106**, selbst wenn „SSD1306“ auf dem PCB steht.
+Wenn `--test-oled` nichts zeigt, setze in `.env`:
+
+```
+OLED_DRIVER=sh1106
+OLED_I2C_BUS=1
+OLED_I2C_ADDR=0x3C
+```
+
+Dann:
+```bash
+python -m src.main --test-oled
+```
