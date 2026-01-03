@@ -105,3 +105,33 @@ Dann:
 ```bash
 python -m src.main --test-oled
 ```
+
+## OLED (finale Einstellung fuer dein Panel)
+Dein 0.91" OLED ist faktisch **SH1106** und clippt am Rand. Darum nutzt das Projekt eine **Safe-Area**.
+
+Empfohlene `.env` Werte:
+```
+OLED_DRIVER=sh1106
+OLED_I2C_BUS=1
+OLED_I2C_ADDR=0x3C
+OLED_WIDTH=128
+OLED_HEIGHT=32
+OLED_FONT_SIZE=12
+OLED_MARGIN_LEFT=4
+OLED_MARGIN_TOP=3
+OLED_MARGIN_RIGHT=4
+OLED_MARGIN_BOTTOM=4
+OLED_TEXT_DX=1
+OLED_TEXT_DY=7
+```
+
+Test:
+```bash
+python -m src.main --test-oled
+```
+
+Im Normalbetrieb zeigt das OLED Status (wenn aktiv):
+- Bereit
+- Hoere ...
+- Denke ...
+- Spreche ...

@@ -120,6 +120,18 @@ def main():
             forced_mode = None
 
     settings = load_settings()
+    # Optional OLED Statusanzeige
+    oled = None
+    try:
+        from .oled_display import OledDisplay
+        oled = OledDisplay()
+        if oled.init():
+            oled.show_ready()
+        else:
+            oled = None
+    except Exception:
+        oled = None
+
     if not settings.use_gpio:
         print("USE_GPIO=false – dieser Build nutzt GPIO für Kontakt/LEDs. Bitte USE_GPIO=true setzen.")
         return
