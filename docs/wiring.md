@@ -88,3 +88,20 @@ Dann:
 ```bash
 python -m src.main --test-oled
 ```
+
+#### OLED Größe/Rotation erzwingen (falls Display leer bleibt)
+Viele 0.91" Displays sind **128x32**. Du kannst Größe/Rotation explizit setzen:
+
+```
+OLED_DRIVER=sh1106
+OLED_I2C_BUS=1
+OLED_I2C_ADDR=0x3C
+OLED_WIDTH=128
+OLED_HEIGHT=32
+OLED_ROTATE=0   # oder 2
+```
+
+Dann:
+```bash
+python -m src.main --test-oled
+```
