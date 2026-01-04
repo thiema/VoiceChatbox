@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 from __future__ import annotations
 
 import os
@@ -120,13 +121,13 @@ class OledDisplay:
         self.show_box_and_text("Bereit")
 
     def show_listening(self) -> None:
-        self.show_box_and_text("Hoere ...")
+        self.show_box_and_text("Höre …")
 
     def show_thinking(self) -> None:
-        self.show_box_and_text("Denke ...")
+        self.show_box_and_text("Denke …")
 
     def show_speaking(self) -> None:
-        self.show_box_and_text("Spreche ...")
+        self.show_box_and_text("Spreche …")
 
     def show_mode_prompt(self) -> None:
         self.show_box_and_text("Echo/Chatbox?")

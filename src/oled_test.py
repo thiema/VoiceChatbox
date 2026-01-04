@@ -17,5 +17,5 @@ def run_oled_test() -> None:
         print("  -> OLED init fehlgeschlagen. Prüfe: i2cdetect -y 1 (0x3C).")
         return
 
-    oled.show_box_and_text("SH1106 OK")
+    oled.show_box_and_text("Höre …")
     print("  -> Auf dem OLED sollte ein Innenrahmen + 'SH1106 OK' sichtbar sein.")
