@@ -33,6 +33,7 @@ Diese Anleitung hilft dir beim Anschließen und Testen des Mikrofon-Arrays (ReSp
    - Stelle sicher, dass alle Pins korrekt ausgerichtet sind (Pin 1 zu Pin 1)
    - Das Board wird über die GPIO-Pins versorgt (keine separate Stromversorgung nötig)
    - **WICHTIG:** Raspberry Pi vor dem Aufstecken ausschalten!
+   - **📖 Detaillierte Pinout-Darstellung:** Siehe [docs/pcms122-pinout.md](pcms122-pinout.md)
 
 2. **I2S aktivieren**
    ```bash
