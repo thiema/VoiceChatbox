@@ -25,15 +25,15 @@ Diese Anleitung hilft dir beim Anschließen und Testen des Mikrofon-Arrays (ReSp
    lsusb | grep -i audio
    ```
 
-### 1.2 Audioausgabe (PCMS122 Audio Board + PAM8610 Verstärker + 4× Lautsprecher)
+### 1.2 Audioausgabe (PCM5122 Audio Board + PAM8610 Verstärker + 4× Lautsprecher)
 
-#### PCMS122 Audio Board (I2S-DAC HAT)
+#### PCM5122 Audio Board (I2S-DAC HAT)
 1. **Aufstecken auf Raspberry Pi**
-   - Stecke das PCMS122 Audio Board direkt auf die **GPIO-Pins** des Raspberry Pi
+   - Stecke das PCM5122 Audio Board direkt auf die **GPIO-Pins** des Raspberry Pi
    - Stelle sicher, dass alle Pins korrekt ausgerichtet sind (Pin 1 zu Pin 1)
    - Das Board wird über die GPIO-Pins versorgt (keine separate Stromversorgung nötig)
    - **WICHTIG:** Raspberry Pi vor dem Aufstecken ausschalten!
-   - **📖 Detaillierte Pinout-Darstellung:** Siehe [docs/pcms122-pinout.md](pcms122-pinout.md)
+   - **📖 Detaillierte Pinout-Darstellung:** Siehe [docs/pcm5122-pinout.md](pcm5122-pinout.md)
 
 2. **I2S aktivieren**
    ```bash
@@ -57,7 +57,7 @@ Diese Anleitung hilft dir beim Anschließen und Testen des Mikrofon-Arrays (ReSp
    ```bash
    # Prüfe, ob I2S-Gerät erkannt wurde
    aplay -l
-   # PCMS122 sollte als Audio-Gerät erscheinen (z. B. "snd_rpi_pcm512x")
+   # PCM5122 sollte als Audio-Gerät erscheinen (z. B. "snd_rpi_pcm512x")
    
    # Prüfe Treiber
    lsmod | grep snd_soc_pcm512x
@@ -72,14 +72,14 @@ Diese Anleitung hilft dir beim Anschließen und Testen des Mikrofon-Arrays (ReSp
    - **Strombedarf:** Bis zu 2 A bei voller Leistung (abhängig von Lautstärke)
 
 2. **Audio-Verbindung**
-   - **PCMS122 Audio Board** (Line-Out L/R) → **PAM8610** (Audio-In L/R)
+   - **PCM5122 Audio Board** (Line-Out L/R) → **PAM8610** (Audio-In L/R)
    - Verwende abgeschirmte Audio-Kabel für bessere Qualität
    - **Stereo-Verbindung:** Links und Rechts getrennt anschließen
 
 3. **Verdrahtung**
    ```
-   PCMS122 (Line-Out L) → PAM8610 (Audio-In L)
-   PCMS122 (Line-Out R) → PAM8610 (Audio-In R)
+   PCM5122 (Line-Out L) → PAM8610 (Audio-In L)
+   PCM5122 (Line-Out R) → PAM8610 (Audio-In R)
    PAM8610 (GND) → Raspberry Pi (GND)
    PAM8610 (VCC) → Externe 12V-Quelle (NICHT GPIO!)
    ```
@@ -148,7 +148,7 @@ python -m src.audio_test --list
 
 **Erwartete Ausgabe:**
 - ReSpeaker XVF3800 sollte als Eingabegerät erscheinen (z. B. "XMOS XVF3800")
-- PCMS122 Audio Board sollte als Ausgabegerät erscheinen (z. B. "snd_rpi_pcm512x" oder ähnlich)
+- PCM5122 Audio Board sollte als Ausgabegerät erscheinen (z. B. "snd_rpi_pcm512x" oder ähnlich)
 
 **Beispiel:**
 ```
@@ -164,7 +164,7 @@ ID   Name                                      Channels     Sample Rate Default
 
 Notiere dir die **ID** (erste Spalte) von:
 - **Eingabegerät:** ReSpeaker XVF3800 (z. B. ID 2)
-- **Ausgabegerät:** PCMS122 Audio Board (z. B. ID 3, Name: "snd_rpi_pcm512x" oder ähnlich)
+- **Ausgabegerät:** PCM5122 Audio Board (z. B. ID 3, Name: "snd_rpi_pcm512x" oder ähnlich)
 
 ### 2.3 Konfiguration in `.env`
 
@@ -305,15 +305,15 @@ groups  # sollte 'audio' enthalten sein
    # Stelle sicher, dass das richtige Ausgabegerät in .env steht
    ```
 
-3. **PCMS122 Audio Board prüfen:**
+3. **PCM5122 Audio Board prüfen:**
    - Ist das Board korrekt auf die GPIO-Pins aufgesteckt?
    - I2S aktiviert? (`sudo raspi-config` → Interface Options → I2S)
-   - Prüfe mit: `aplay -l` (sollte PCMS122/pcm512x zeigen)
+   - Prüfe mit: `aplay -l` (sollte PCM5122/pcm512x zeigen)
 
 4. **PAM8610 Verstärker prüfen:**
    - **Stromversorgung:** 12V angeschlossen? (NICHT aus GPIO!)
    - **Gemeinsame Masse (GND)** mit Pi verbunden?
-   - Audio-Kabel von PCMS122 zu Verstärker korrekt?
+   - Audio-Kabel von PCM5122 zu Verstärker korrekt?
    - Verstärker wird warm? (Normal bei Betrieb)
 
 5. **Lautsprecher prüfen:**
@@ -334,7 +334,7 @@ groups  # sollte 'audio' enthalten sein
 **Lösung:**
 - Lautstärke reduzieren (in Software: `alsamixer` oder `amixer`)
 - Prüfe, ob PAM8610 Verstärker übersteuert wird
-- Prüfe, ob PCMS122 Line-Level korrekt ausgibt
+- Prüfe, ob PCM5122 Line-Level korrekt ausgibt
 - **Impedanz prüfen:** Zu niedrige Impedanz (z. B. 2 Ω bei 4×4 Ω parallel) kann Verzerrung verursachen
 - **Empfehlung:** Pro Kanal nur 1 Box (4 Ω) verwenden
 
@@ -363,7 +363,7 @@ groups  # sollte 'audio' enthalten sein
    python -m src.audio_test --speaker --device 3
    ```
 
-### Problem: PCMS122 wird nicht erkannt
+### Problem: PCM5122 wird nicht erkannt
 
 **Lösung:**
 1. **I2S aktivieren:**
@@ -386,7 +386,7 @@ groups  # sollte 'audio' enthalten sein
    # Prüfe /boot/config.txt
    cat /boot/config.txt | grep -i pcm
    # Sollte enthalten: dtoverlay=hifiberry-dacplus oder ähnlich
-   # Für PCMS122 könnte es sein: dtoverlay=pcm512x
+   # Für PCM5122 könnte es sein: dtoverlay=pcm512x
    ```
 
 4. **Manuell aktivieren (falls nötig):**
@@ -402,7 +402,7 @@ groups  # sollte 'audio' enthalten sein
 5. **Nach Reboot prüfen:**
    ```bash
    aplay -l
-   # PCMS122 sollte jetzt erscheinen
+   # PCM5122 sollte jetzt erscheinen
    ```
 
 ---

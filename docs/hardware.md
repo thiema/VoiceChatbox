@@ -9,7 +9,7 @@
 ## Audioausgabe (verwendete Komponenten)
 
 ### Soundkarte (DAC)
-- **PCMS122 Audio Board** (I2S-DAC HAT)
+- **PCM5122 Audio Board** (I2S-DAC HAT)
   - Wird direkt auf die GPIO-Pins des Raspberry Pi aufgesteckt
   - Bietet hochwertige Audio-Ausgabe über I2S-Interface
   - Keine USB-Verbindung nötig

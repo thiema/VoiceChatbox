@@ -4,7 +4,7 @@ Für Pin-Details siehe **docs/gpio-mapping.md**.
 
 ## 1) Stromversorgung
 - **Raspberry Pi 5:** USB‑C Netzteil (5V / 5A)
-- **PCMS122 Audio Board:** Wird über GPIO-Pins versorgt (keine separate Versorgung nötig)
+- **PCM5122 Audio Board:** Wird über GPIO-Pins versorgt (keine separate Versorgung nötig)
 - **PAM8610 Verstärker:** **8–15 V DC** (empfohlen: 12 V), **separate Stromversorgung erforderlich**
   - **WICHTIG:** Verstärker **nicht** aus GPIO-Pins speisen!
   - **Gemeinsame Masse (GND)** mit Raspberry Pi verbinden
@@ -16,7 +16,7 @@ Für Pin-Details siehe **docs/gpio-mapping.md**.
 
 ### 2.2 Audioausgabe
 
-#### PCMS122 Audio Board
+#### PCM5122 Audio Board
 - **Aufstecken:** Direkt auf GPIO-Pins des Raspberry Pi (Pin 1 zu Pin 1)
 - **Versorgung:** Über GPIO-Pins (keine separate Stromversorgung)
 - **Audio-Ausgang:** Line-Out Links (L) und Rechts (R)
@@ -27,9 +27,9 @@ Für Pin-Details siehe **docs/gpio-mapping.md**.
   - **GND:** → Raspberry Pi GND (gemeinsame Masse)
   - **WICHTIG:** NICHT aus GPIO-Pins speisen!
 - **Audio-Eingang:**
-  - **L-In:** → PCMS122 Line-Out L
-  - **R-In:** → PCMS122 Line-Out R
-  - **GND:** → PCMS122 GND (gemeinsame Masse)
+  - **L-In:** → PCM5122 Line-Out L
+  - **R-In:** → PCM5122 Line-Out R
+  - **GND:** → PCM5122 GND (gemeinsame Masse)
 - **Audio-Ausgang:**
   - **L+ / L-:** → Lautsprecher Links
   - **R+ / R-:** → Lautsprecher Rechts

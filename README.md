@@ -76,7 +76,7 @@ Für Autostart siehe **docs/software.md**.
 - **docs/gpio-mapping.md** – GPIO‑Belegung (Taster, LED, OLED)
 - **docs/software.md** – Installation, Audio‑Setup, Autostart (systemd)
 - **docs/audio-setup.md** – **Audio-Setup & Test-Anleitung** (Mikrofon & Lautsprecher)
-- **docs/pcms122-pinout.md** – **PCMS122 GPIO Pinout & Anschluss** (grafische Darstellung)
+- **docs/pcm5122-pinout.md** – **PCM5122 GPIO Pinout & Anschluss** (grafische Darstellung)
 - **docs/troubleshooting.md** – typische Fehler & Lösungen
 
 ---

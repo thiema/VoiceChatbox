@@ -1,17 +1,17 @@
-# PCMS122 Audio Board - GPIO Pinout & Anschluss
+# PCM5122 Audio Board - GPIO Pinout & Anschluss
 
-Diese Dokumentation zeigt die grafische/schematische Darstellung für den Anschluss des PCMS122 Audio Boards auf die GPIO-Pins des Raspberry Pi.
+Diese Dokumentation zeigt die grafische/schematische Darstellung für den Anschluss des PCM5122 Audio Boards auf die GPIO-Pins des Raspberry Pi.
 
 ---
 
-## Übersicht: PCMS122 auf Raspberry Pi
+## Übersicht: PCM5122 auf Raspberry Pi
 
-Das PCMS122 Audio Board wird **direkt auf die GPIO-Pins** des Raspberry Pi aufgesteckt (HAT-Format). Es nutzt das **I2S-Interface** für die Audio-Übertragung.
+Das PCM5122 Audio Board wird **direkt auf die GPIO-Pins** des Raspberry Pi aufgesteckt (HAT-Format). Es nutzt das **I2S-Interface** für die Audio-Übertragung.
 
 ```
 ┌─────────────────────────────────────────┐
 │                                         │
-│         PCMS122 Audio Board             │
+│         PCM5122 Audio Board             │
 │         (I2S-DAC HAT)                   │
 │                                         │
 │    ┌─────────────────────────────┐     │
@@ -53,7 +53,7 @@ Das PCMS122 Audio Board wird **direkt auf die GPIO-Pins** des Raspberry Pi aufge
      └─────────────────────────────────────┘
 ```
 
-### GPIO Pin-Belegung (für PCMS122)
+### GPIO Pin-Belegung (für PCM5122)
 
 ```
      ┌─────────────────────────────────────┐
@@ -104,11 +104,11 @@ Das PCMS122 Audio Board wird **direkt auf die GPIO-Pins** des Raspberry Pi aufge
 
 ---
 
-## PCMS122 Pin-Zuordnung
+## PCM5122 Pin-Zuordnung
 
 ### Wichtige Verbindungen
 
-| PCMS122 Pin | Raspberry Pi Pin | Funktion | Beschreibung |
+| PCM5122 Pin | Raspberry Pi Pin | Funktion | Beschreibung |
 |-------------|------------------|----------|--------------|
 | **VCC** | Pin 2 oder 4 | **5V** | Stromversorgung |
 | **GND** | Pin 6, 9, 14, 20, 25, 30, 34, 39 | **GND** | Masse (mehrere Pins) |
@@ -121,7 +121,7 @@ Das PCMS122 Audio Board wird **direkt auf die GPIO-Pins** des Raspberry Pi aufge
 ### Schematische Darstellung
 
 ```
-PCMS122 Audio Board
+PCM5122 Audio Board
 ┌─────────────────────────────────────┐
 │                                     │
 │  ┌───────────────────────────────┐  │
@@ -166,7 +166,7 @@ Raspberry Pi GPIO Header
 
 ### Schritt 2: Pin-Ausrichtung prüfen
 ```
-PCMS122 Board:
+PCM5122 Board:
 ┌─────────────┐
 │             │
 │  [Header]   │  ← 40-Pin Header (unten)
@@ -181,8 +181,8 @@ Raspberry Pi:
 └─────────────┘
 
 Ausrichtung:
-- Pin 1 (PCMS122) → Pin 1 (Raspberry Pi)
-- Pin 2 (PCMS122) → Pin 2 (Raspberry Pi)
+- Pin 1 (PCM5122) → Pin 1 (Raspberry Pi)
+- Pin 2 (PCM5122) → Pin 2 (Raspberry Pi)
 - ...
 - Alle 40 Pins müssen korrekt ausgerichtet sein!
 ```
@@ -199,7 +199,7 @@ Ausrichtung:
 ```bash
 # Nach dem Booten prüfen:
 aplay -l
-# Sollte PCMS122/pcm512x zeigen
+# Sollte PCM5122/pcm512x zeigen
 
 lsmod | grep snd_soc_pcm512x
 # Sollte Treiber zeigen
@@ -236,21 +236,21 @@ DIN:   ──[D0][D1][D2][D3][D4][D5][D6][D7]──
 
 ## Stromversorgung
 
-### PCMS122 Versorgung
+### PCM5122 Versorgung
 
 ```
 Raspberry Pi GPIO:
 ├─ Pin 2 (5V) ────────┐
 │                     │
-├─ Pin 4 (5V) ───────┼──→ PCMS122 VCC (5V)
+├─ Pin 4 (5V) ───────┼──→ PCM5122 VCC (5V)
 │                     │
-├─ Pin 1 (3.3V) ──────┼──→ PCMS122 3.3V (Logik)
+├─ Pin 1 (3.3V) ──────┼──→ PCM5122 3.3V (Logik)
 │                     │
-└─ Pin 6/9/14/... ────┴──→ PCMS122 GND
+└─ Pin 6/9/14/... ────┴──→ PCM5122 GND
    (GND)
 ```
 
-**Hinweis:** Das PCMS122 Board wird vollständig über die GPIO-Pins versorgt. Keine separate Stromversorgung nötig!
+**Hinweis:** Das PCM5122 Board wird vollständig über die GPIO-Pins versorgt. Keine separate Stromversorgung nötig!
 
 ---
 
@@ -259,7 +259,7 @@ Raspberry Pi GPIO:
 ### Line-Out Anschlüsse
 
 ```
-PCMS122 Audio Board
+PCM5122 Audio Board
 ┌─────────────────────────┐
 │                         │
 │  [Line-Out L]  [Line-Out R]
@@ -282,7 +282,7 @@ PCMS122 Audio Board
 
 ## Troubleshooting
 
-### Problem: PCMS122 wird nicht erkannt
+### Problem: PCM5122 wird nicht erkannt
 
 **Prüfliste:**
 1. ✅ Ist das Board korrekt aufgesteckt? (alle Pins)
@@ -303,7 +303,7 @@ PCMS122 Audio Board
 
 ## Zusammenfassung
 
-### Wichtige Pins für PCMS122
+### Wichtige Pins für PCM5122
 
 | Funktion | Raspberry Pi Pin | GPIO | Beschreibung |
 |----------|------------------|------|--------------|
