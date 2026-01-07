@@ -25,48 +25,112 @@ Diese Anleitung hilft dir beim Anschließen und Testen des Mikrofon-Arrays (ReSp
    lsusb | grep -i audio
    ```
 
-### 1.2 Audioausgabe (Option A: USB-DAC + Verstärker + Lautsprecher)
+### 1.2 Audioausgabe (PCMS122 Audio Board + PAM8610 Verstärker + 4× Lautsprecher)
 
-#### USB-DAC
-1. **USB-DAC anschließen**
-   - Stecke den USB-DAC in einen USB-Port des Raspberry Pi
-   - Warte einige Sekunden, bis das Gerät erkannt wurde
+#### PCMS122 Audio Board (I2S-DAC HAT)
+1. **Aufstecken auf Raspberry Pi**
+   - Stecke das PCMS122 Audio Board direkt auf die **GPIO-Pins** des Raspberry Pi
+   - Stelle sicher, dass alle Pins korrekt ausgerichtet sind (Pin 1 zu Pin 1)
+   - Das Board wird über die GPIO-Pins versorgt (keine separate Stromversorgung nötig)
+   - **WICHTIG:** Raspberry Pi vor dem Aufstecken ausschalten!
 
-2. **Verifikation**
+2. **I2S aktivieren**
    ```bash
-   # Prüfe USB-Geräte
-   lsusb | grep -i audio
+   sudo raspi-config
+   # Navigiere zu: Interface Options → I2S → Enable
+   # Reboot erforderlich
    ```
 
-#### Verstärker (z. B. PAM8403)
+3. **Device Tree Overlay konfigurieren (falls nötig)**
+   ```bash
+   sudo nano /boot/config.txt
+   # Füge am Ende hinzu (falls nicht vorhanden):
+   dtoverlay=pcm512x
+   # Oder für Hifiberry-kompatible Boards:
+   # dtoverlay=hifiberry-dacplus
+   # Speichern (Strg+O, Enter, Strg+X)
+   sudo reboot
+   ```
+
+4. **Verifikation**
+   ```bash
+   # Prüfe, ob I2S-Gerät erkannt wurde
+   aplay -l
+   # PCMS122 sollte als Audio-Gerät erscheinen (z. B. "snd_rpi_pcm512x")
+   
+   # Prüfe Treiber
+   lsmod | grep snd_soc_pcm512x
+   ```
+
+#### PAM8610 Verstärker
 1. **Stromversorgung**
    - **WICHTIG:** Verstärker **nicht** aus GPIO-Pins speisen!
-   - Nutze eine separate 5V-Quelle (z. B. USB-Netzteil oder Powerbank)
+   - **Versorgungsspannung:** 8–15 V DC (empfohlen: 12 V)
+   - Nutze eine separate 12V-Stromversorgung (z. B. 12V-Netzteil oder Powerbank)
    - **Gemeinsame Masse (GND)** mit Raspberry Pi verbinden
+   - **Strombedarf:** Bis zu 2 A bei voller Leistung (abhängig von Lautstärke)
 
 2. **Audio-Verbindung**
-   - USB-DAC Line-Out → Verstärker Audio-In
-   - Verstärker Audio-Out → Lautsprecher
+   - **PCMS122 Audio Board** (Line-Out L/R) → **PAM8610** (Audio-In L/R)
+   - Verwende abgeschirmte Audio-Kabel für bessere Qualität
+   - **Stereo-Verbindung:** Links und Rechts getrennt anschließen
 
 3. **Verdrahtung**
    ```
-   USB-DAC (Line-Out) → Verstärker (Audio-In)
-   Verstärker (Audio-Out) → Lautsprecher (+ und -)
-   Verstärker (GND) → Raspberry Pi (GND)
-   Verstärker (5V) → Externe 5V-Quelle (NICHT GPIO!)
+   PCMS122 (Line-Out L) → PAM8610 (Audio-In L)
+   PCMS122 (Line-Out R) → PAM8610 (Audio-In R)
+   PAM8610 (GND) → Raspberry Pi (GND)
+   PAM8610 (VCC) → Externe 12V-Quelle (NICHT GPIO!)
    ```
 
-#### Lautsprecher
-- **2"-3" Full-Range** Lautsprecher (z. B. Visaton FRS-5, 8Ω)
-- Anschluss an Verstärker-Ausgang
-- **Polarität beachten:** + und - korrekt anschließen
+4. **Hinweise zum PAM8610**
+   - **Leistung:** 10 W pro Kanal (20 W gesamt)
+   - **Lautstärke-Regelung:** Über Software (alsamixer) oder Hardware-Potis (falls vorhanden)
+   - **Überhitzungsschutz:** Verstärker kann bei hoher Belastung warm werden
 
-### 1.3 Audioausgabe (Option B: Aktive Lautsprecher)
+#### Lautsprecher (4× 4 Ω / 5 W Boxen)
+1. **WICHTIG: Impedanz beachten!**
+   - **PAM8610 unterstützt:** 4–8 Ω pro Kanal
+   - **4×4 Ω parallel = 1 Ω** → **ZU NIEDRIG!** Verstärker wird überlastet!
+   - **Empfohlene Konfigurationen:**
+     - **Option A:** 1 Box pro Kanal (4 Ω) → **2 Boxen verwenden**
+     - **Option B:** 2 Boxen pro Kanal in Reihe (8 Ω) → **4 Boxen verwenden**
 
-1. **USB-Lautsprecher oder 3.5mm-Lautsprecher**
-   - USB-Lautsprecher: Einfach in USB-Port stecken
-   - 3.5mm-Lautsprecher: In 3.5mm-Ausgang des Pi stecken (falls vorhanden)
-   - **Vorteil:** Kein Verstärker nötig
+2. **Anschluss (Option A: 1 Box pro Kanal - empfohlen)**
+   - **Stereo-Konfiguration:** 1 Box links, 1 Box rechts
+   - **Impedanz:** 4 Ω pro Kanal (optimal für PAM8610)
+   - **Leistung:** 5 W pro Box (ausreichend für Sprach-TTS)
+
+3. **Verdrahtung (Option A: 1 Box pro Kanal - empfohlen)**
+   ```
+   PAM8610 (Out L+) → Lautsprecher 1 (+)
+   PAM8610 (Out L-) → Lautsprecher 1 (-)
+   PAM8610 (Out R+) → Lautsprecher 2 (+)
+   PAM8610 (Out R-) → Lautsprecher 2 (-)
+   ```
+   **Verwendung:** 2 von 4 Boxen
+
+4. **Alternative: Reihenschaltung (Option B: 2 Boxen pro Kanal = 8 Ω)**
+   ```
+   PAM8610 (Out L+) → Lautsprecher 1 (+) → Lautsprecher 1 (-) → Lautsprecher 3 (+) → Lautsprecher 3 (-) → PAM8610 (Out L-)
+   ```
+   **Erklärung:** Lautsprecher 1 und 3 in Reihe (4 Ω + 4 Ω = 8 Ω)
+   (Gleiches für Rechts-Kanal mit Lautsprecher 2 und 4)
+   **Verwendung:** Alle 4 Boxen
+
+4. **Polarität beachten**
+   - **+ und - korrekt anschließen** für korrekte Phasenlage
+   - Falsche Polarität führt zu schlechterer Klangqualität
+
+5. **Sicherheitshinweise**
+   - **Niedrige Lautstärke zum Testen:** Beginne mit niedriger Lautstärke (z. B. 20–30%)
+   - **Überlastung vermeiden:** 
+     - ❌ **NICHT:** 4×4 Ω parallel = 1 Ω (zu niedrig, Verstärker wird überlastet!)
+     - ❌ **NICHT:** 2×4 Ω parallel = 2 Ω (zu niedrig für PAM8610)
+     - ✅ **OK:** 1×4 Ω = 4 Ω pro Kanal
+     - ✅ **OK:** 2×4 Ω in Reihe = 8 Ω pro Kanal
+   - **Empfohlene Konfiguration:** 1 Box pro Kanal (4 Ω) für beste Performance
+   - **Wärmeentwicklung:** PAM8610 kann bei hoher Lautstärke warm werden (normal)
 
 ---
 
@@ -83,7 +147,7 @@ python -m src.audio_test --list
 
 **Erwartete Ausgabe:**
 - ReSpeaker XVF3800 sollte als Eingabegerät erscheinen (z. B. "XMOS XVF3800")
-- USB-DAC oder Lautsprecher sollte als Ausgabegerät erscheinen
+- PCMS122 Audio Board sollte als Ausgabegerät erscheinen (z. B. "snd_rpi_pcm512x" oder ähnlich)
 
 **Beispiel:**
 ```
@@ -92,14 +156,14 @@ ID   Name                                      Channels     Sample Rate Default
 0    bcm2835 HDMI/HDMI                        0 in / 2 out 44100       [OUT]
 1    bcm2835 Headphones                        0 in / 2 out 44100       
 2    XMOS XVF3800                             4 in / 0 out 48000       [IN]
-3    USB Audio DAC                             0 in / 2 out 44100       [OUT]
+3    snd_rpi_pcm512x                          0 in / 2 out 44100       [OUT]
 ```
 
 ### 2.2 Geräte-ID notieren
 
 Notiere dir die **ID** (erste Spalte) von:
 - **Eingabegerät:** ReSpeaker XVF3800 (z. B. ID 2)
-- **Ausgabegerät:** USB-DAC oder Lautsprecher (z. B. ID 3)
+- **Ausgabegerät:** PCMS122 Audio Board (z. B. ID 3, Name: "snd_rpi_pcm512x" oder ähnlich)
 
 ### 2.3 Konfiguration in `.env`
 
@@ -118,7 +182,7 @@ AUDIO_OUTPUT_DEVICE=3
 **Option 2: Gerätename verwenden (Teilstring)**
 ```
 AUDIO_INPUT_DEVICE=XMOS
-AUDIO_OUTPUT_DEVICE=USB Audio
+AUDIO_OUTPUT_DEVICE=pcm512x
 ```
 
 **Hinweis:** Wenn die Variablen nicht gesetzt sind, werden die Standard-Geräte verwendet.
@@ -240,15 +304,22 @@ groups  # sollte 'audio' enthalten sein
    # Stelle sicher, dass das richtige Ausgabegerät in .env steht
    ```
 
-3. **Verstärker prüfen:**
-   - Stromversorgung des Verstärkers prüfen
-   - Gemeinsame Masse (GND) mit Pi prüfen
-   - Verstärker nicht aus GPIO speisen!
+3. **PCMS122 Audio Board prüfen:**
+   - Ist das Board korrekt auf die GPIO-Pins aufgesteckt?
+   - I2S aktiviert? (`sudo raspi-config` → Interface Options → I2S)
+   - Prüfe mit: `aplay -l` (sollte PCMS122/pcm512x zeigen)
 
-4. **Lautsprecher prüfen:**
+4. **PAM8610 Verstärker prüfen:**
+   - **Stromversorgung:** 12V angeschlossen? (NICHT aus GPIO!)
+   - **Gemeinsame Masse (GND)** mit Pi verbunden?
+   - Audio-Kabel von PCMS122 zu Verstärker korrekt?
+   - Verstärker wird warm? (Normal bei Betrieb)
+
+5. **Lautsprecher prüfen:**
    - Kabelverbindungen prüfen
    - Polarität (+/-) prüfen
-   - Lautsprecher direkt am Verstärker testen
+   - **Impedanz prüfen:** Pro Kanal max. 1 Box (4 Ω) oder 2 Boxen in Reihe (8 Ω)
+   - Lautsprecher direkt am Verstärker testen (niedrige Lautstärke!)
 
 ### Problem: Echo/Feedback
 
@@ -260,9 +331,11 @@ groups  # sollte 'audio' enthalten sein
 ### Problem: Verzerrung
 
 **Lösung:**
-- Lautstärke reduzieren (am Verstärker oder in Software)
-- Prüfe, ob Verstärker übersteuert wird
-- Prüfe, ob USB-DAC Line-Level ausgibt (nicht zu stark)
+- Lautstärke reduzieren (in Software: `alsamixer` oder `amixer`)
+- Prüfe, ob PAM8610 Verstärker übersteuert wird
+- Prüfe, ob PCMS122 Line-Level korrekt ausgibt
+- **Impedanz prüfen:** Zu niedrige Impedanz (z. B. 2 Ω bei 4×4 Ω parallel) kann Verzerrung verursachen
+- **Empfehlung:** Pro Kanal nur 1 Box (4 Ω) verwenden
 
 ### Problem: Falsches Gerät wird verwendet
 
@@ -277,11 +350,58 @@ groups  # sollte 'audio' enthalten sein
    AUDIO_INPUT_DEVICE=2
    AUDIO_OUTPUT_DEVICE=3
    ```
+   Oder per Name:
+   ```
+   AUDIO_INPUT_DEVICE=XMOS
+   AUDIO_OUTPUT_DEVICE=pcm512x
+   ```
 
 3. Testen:
    ```bash
    python -m src.audio_test --mic --device 2
    python -m src.audio_test --speaker --device 3
+   ```
+
+### Problem: PCMS122 wird nicht erkannt
+
+**Lösung:**
+1. **I2S aktivieren:**
+   ```bash
+   sudo raspi-config
+   # Interface Options → I2S → Enable
+   sudo reboot
+   ```
+
+2. **Treiber prüfen:**
+   ```bash
+   # Prüfe, ob Treiber geladen ist
+   lsmod | grep snd_soc_pcm512x
+   # Oder allgemein
+   lsmod | grep snd
+   ```
+
+3. **Device Tree Overlay prüfen:**
+   ```bash
+   # Prüfe /boot/config.txt
+   cat /boot/config.txt | grep -i pcm
+   # Sollte enthalten: dtoverlay=hifiberry-dacplus oder ähnlich
+   # Für PCMS122 könnte es sein: dtoverlay=pcm512x
+   ```
+
+4. **Manuell aktivieren (falls nötig):**
+   ```bash
+   sudo nano /boot/config.txt
+   # Füge hinzu:
+   dtoverlay=pcm512x
+   # Oder für Hifiberry-kompatible Boards:
+   dtoverlay=hifiberry-dacplus
+   sudo reboot
+   ```
+
+5. **Nach Reboot prüfen:**
+   ```bash
+   aplay -l
+   # PCMS122 sollte jetzt erscheinen
    ```
 
 ---

@@ -5,21 +5,28 @@
 - **Raspberry Pi 5 (8 GB RAM)**
 - **Netzteil:** USB‑C, 5V / 5A (offiziell empfohlen)
 - **Mikrofon-Array:** ReSpeaker **XMOS XVF3800** (USB, 4‑Mic, DSP)
-- **Audioausgabe** (eine der Optionen):
-  - **Option A (einfach & gut):** USB‑DAC (oder I2S‑DAC) + kleiner Class‑D Verstärker + passiver Lautsprecher
-  - **Option B (einfachster Aufbau):** aktive USB/3.5mm Lautsprecher (kein Verstärker nötig)
 
-## Empfehlung: Audio (passiv)
+## Audioausgabe (verwendete Komponenten)
 
-### DAC
-- **USB‑DAC** (Plug&Play) *oder* **I2S‑DAC HAT (PCM5122/PCM5102)**
+### Soundkarte (DAC)
+- **PCMS122 Audio Board** (I2S-DAC HAT)
+  - Wird direkt auf die GPIO-Pins des Raspberry Pi aufgesteckt
+  - Bietet hochwertige Audio-Ausgabe über I2S-Interface
+  - Keine USB-Verbindung nötig
 
 ### Verstärker
-- **PAM8403** (5V, 2×3W) – reicht für Sprach‑TTS in Wohnräumen
+- **PAM8610** Class-D Stereo-Audio-Verstärker
+  - **Leistung:** 10 W pro Kanal (20 W gesamt)
+  - **Versorgung:** 8–15 V DC (empfohlen: 12 V)
+  - **WICHTIG:** Verstärker **nicht** aus GPIO-Pins speisen!
+  - Separate Stromversorgung erforderlich
 
 ### Lautsprecher
-- **2"–3" Full‑Range**, z. B. Visaton FRS‑5 (8Ω) oder vergleichbar
-- Alternativ: 4Ω Mini‑Speaker (benötigt passende Amp‑Auslegung, tendenziell mehr Strom)
+- **4× Lautsprecherboxen**
+  - **Impedanz:** 4 Ω pro Box
+  - **Leistung:** 5 W pro Box
+  - **Anschluss:** Stereo (2×2 Boxen)
+  - **Polarität beachten:** + und - korrekt anschließen
 
 ## Breadboard & Kabel
 

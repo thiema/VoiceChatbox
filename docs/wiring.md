@@ -3,12 +3,45 @@
 Für Pin-Details siehe **docs/gpio-mapping.md**.
 
 ## 1) Stromversorgung
-- Raspberry Pi 5: USB‑C Netzteil
-- Verstärker (z. B. PAM8403): 5V Versorgung (idealerweise separate 5V-Quelle), **gemeinsame Masse** mit Pi
+- **Raspberry Pi 5:** USB‑C Netzteil (5V / 5A)
+- **PCMS122 Audio Board:** Wird über GPIO-Pins versorgt (keine separate Versorgung nötig)
+- **PAM8610 Verstärker:** **8–15 V DC** (empfohlen: 12 V), **separate Stromversorgung erforderlich**
+  - **WICHTIG:** Verstärker **nicht** aus GPIO-Pins speisen!
+  - **Gemeinsame Masse (GND)** mit Raspberry Pi verbinden
 
 ## 2) Audio
-- Mikrofon-Array (XVF3800) → USB → Raspberry Pi
-- Raspberry Pi → USB-DAC (oder I2S-DAC) → Verstärker → Lautsprecher
+
+### 2.1 Mikrofon-Array
+- **ReSpeaker XVF3800** → USB → Raspberry Pi
+
+### 2.2 Audioausgabe
+
+#### PCMS122 Audio Board
+- **Aufstecken:** Direkt auf GPIO-Pins des Raspberry Pi (Pin 1 zu Pin 1)
+- **Versorgung:** Über GPIO-Pins (keine separate Stromversorgung)
+- **Audio-Ausgang:** Line-Out Links (L) und Rechts (R)
+
+#### PAM8610 Verstärker
+- **Stromversorgung:**
+  - **VCC:** 8–15 V DC (empfohlen: 12 V) → Externe 12V-Quelle
+  - **GND:** → Raspberry Pi GND (gemeinsame Masse)
+  - **WICHTIG:** NICHT aus GPIO-Pins speisen!
+- **Audio-Eingang:**
+  - **L-In:** → PCMS122 Line-Out L
+  - **R-In:** → PCMS122 Line-Out R
+  - **GND:** → PCMS122 GND (gemeinsame Masse)
+- **Audio-Ausgang:**
+  - **L+ / L-:** → Lautsprecher Links
+  - **R+ / R-:** → Lautsprecher Rechts
+
+#### Lautsprecher (4× 4 Ω / 5 W)
+- **Empfohlene Konfiguration:** 1 Box pro Kanal (4 Ω)
+  - **Links:** 1 Box (4 Ω) an PAM8610 L+ / L-
+  - **Rechts:** 1 Box (4 Ω) an PAM8610 R+ / R-
+- **Alternative:** 2 Boxen pro Kanal in Reihe (8 Ω)
+  - **Links:** 2 Boxen in Reihe (8 Ω) an PAM8610 L+ / L-
+  - **Rechts:** 2 Boxen in Reihe (8 Ω) an PAM8610 R+ / R-
+- **WICHTIG:** Polarität (+/-) beachten!
 
 ## 3) GPIO / Breakout / Breadboard
 Du nutzt einen **T‑Typ GPIO Adapter**.
