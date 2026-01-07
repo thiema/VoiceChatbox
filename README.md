@@ -28,6 +28,7 @@ raspi-ai-chatbox-de/
 ├── src/
 │   ├── main.py
 │   ├── audio_io.py
+│   ├── audio_test.py
 │   ├── led_status.py
 │   ├── gpio_inputs.py
 │   └── config.py
@@ -74,6 +75,7 @@ Für Autostart siehe **docs/software.md**.
 - **docs/wiring.md** – Verdrahtungsübersicht
 - **docs/gpio-mapping.md** – GPIO‑Belegung (Taster, LED, OLED)
 - **docs/software.md** – Installation, Audio‑Setup, Autostart (systemd)
+- **docs/audio-setup.md** – **Audio-Setup & Test-Anleitung** (Mikrofon & Lautsprecher)
 - **docs/troubleshooting.md** – typische Fehler & Lösungen
 
 ---

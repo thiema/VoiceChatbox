@@ -83,7 +83,7 @@ def _select_mode_by_voice(client: OpenAI, settings, ptt: PushToTalk, leds: LedSt
     for _ in range(3):
         ptt.wait_for_press()
         leds.set(Status.LISTENING)
-        wav_bytes = record_while_pressed(lambda: ptt.is_pressed)
+        wav_bytes = record_while_pressed(lambda: ptt.is_pressed, device=settings.audio_input_device)
         leds.set(Status.THINKING)
 
         text = _stt_transcribe(client, settings.model_stt, wav_bytes).lower()
@@ -156,7 +156,7 @@ def main():
             ptt.wait_for_press()
             leds.set(Status.LISTENING)
 
-            wav_bytes = record_while_pressed(lambda: ptt.is_pressed)
+            wav_bytes = record_while_pressed(lambda: ptt.is_pressed, device=settings.audio_input_device)
             leds.set(Status.THINKING)
 
             user_text = _stt_transcribe(client, settings.model_stt, wav_bytes)
