@@ -102,15 +102,25 @@ class LiveSpeechRecognition:
             text = self._transcribe_audio(wav_bytes)
             
             if text:
-                # Text aktualisieren
-                if self.current_text:
-                    self.current_text += " " + text
-                else:
-                    self.current_text = text
-                
-                # Semantische Satzerkennung
+                # Semantische Satzerkennung mit kontext-basierter Korrektur
                 if self.semantic_processor:
-                    result = self.semantic_processor.process_text(self.current_text)
+                    # Text temporär hinzufügen für Verarbeitung
+                    temp_text = self.current_text + " " + text if self.current_text else text
+                    result = self.semantic_processor.process_text(temp_text)
+                    
+                    # Verwende korrigierten Text
+                    corrected_text = result.get('corrected_text', temp_text)
+                    self.current_text = corrected_text
+                    
+                    # Zeige Korrekturen an
+                    corrections = result.get('corrections', [])
+                    if corrections:
+                        print(f"🔧 {len(corrections)} Korrektur(en) angewendet")
+                    
+                    # Zeige Kontext-Info
+                    context = result.get('context')
+                    if context and context.domain:
+                        print(f"📋 Kontext: {context.domain} (Themen: {', '.join(context.topics)})")
                     
                     # Zeige neue Sätze mit semantischer Info
                     for info in result['semantic_info']:
@@ -137,7 +147,11 @@ class LiveSpeechRecognition:
                     else:
                         self._update_display(self.current_text)
                 else:
-                    # Standard: Einfache Text-Anzeige
+                    # Standard: Einfache Text-Anzeige (ohne Korrektur)
+                    if self.current_text:
+                        self.current_text += " " + text
+                    else:
+                        self.current_text = text
                     self._update_display(self.current_text)
                 
                 # Callback aufrufen

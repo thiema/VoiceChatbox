@@ -3,6 +3,8 @@ import re
 from typing import List, Tuple, Optional
 from dataclasses import dataclass
 
+from .context_correction import ContextualSpeechCorrection
+
 
 @dataclass
 class Sentence:
@@ -282,20 +284,23 @@ class SemanticAnalyzer:
 
 
 class SemanticSpeechRecognition:
-    """Spracherkennung mit semantischer Satzerkennung."""
+    """Spracherkennung mit semantischer Satzerkennung und kontext-basierter Korrektur."""
     
-    def __init__(self, language: str = "de"):
+    def __init__(self, language: str = "de", enable_context_correction: bool = True):
         """
         Initialisiere semantische Spracherkennung.
         
         Args:
             language: Sprache für Analyse
+            enable_context_correction: Kontext-basierte Wortkorrektur aktivieren
         """
         self.language = language
         self.sentence_detector = SentenceDetector()
         self.semantic_analyzer = SemanticAnalyzer()
         self.complete_sentences: List[Sentence] = []
         self.incomplete_sentence: Optional[str] = None
+        self.enable_context_correction = enable_context_correction
+        self.context_corrector = ContextualSpeechCorrection(language=language) if enable_context_correction else None
     
     def process_text(self, new_text: str) -> dict:
         """
@@ -310,9 +315,26 @@ class SemanticSpeechRecognition:
             - incomplete_sentence: Unvollständiger Satz
             - new_sentences: Neu erkannte Sätze
             - semantic_info: Semantische Informationen
+            - corrected_text: Kontext-korrigierter Text
+            - corrections: Liste von Korrekturen
+            - context: Erkannte Kontext-Informationen
         """
-        # Erkenne Sätze im neuen Text
-        sentences = self.sentence_detector.detect_sentences(new_text, self.language)
+        # Kontext-basierte Korrektur
+        corrected_text = new_text
+        corrections = []
+        context = None
+        
+        if self.context_corrector:
+            corrected_text, context, corrections = self.context_corrector.process_text(new_text)
+            
+            # Zeige Korrekturen an
+            if corrections:
+                for corr in corrections:
+                    print(f"🔧 Korrektur: '{corr['original']}' → '{corr['corrected']}' "
+                          f"(Confidence: {corr['confidence']:.2f})")
+        
+        # Erkenne Sätze im korrigierten Text
+        sentences = self.sentence_detector.detect_sentences(corrected_text, self.language)
         
         # Finde neue Sätze (die noch nicht in complete_sentences sind)
         new_sentences = []
@@ -347,7 +369,11 @@ class SemanticSpeechRecognition:
             'incomplete_sentence': self.incomplete_sentence,
             'new_sentences': new_sentences,
             'semantic_info': semantic_info,
-            'full_text': new_text
+            'full_text': corrected_text,  # Verwende korrigierten Text
+            'original_text': new_text,  # Behalte Original für Vergleich
+            'corrected_text': corrected_text,
+            'corrections': corrections,
+            'context': context
         }
     
     def get_display_text(self, max_sentences: int = 2) -> str:
@@ -377,3 +403,5 @@ class SemanticSpeechRecognition:
         """Setze alle Sätze zurück."""
         self.complete_sentences = []
         self.incomplete_sentence = None
+        if self.context_corrector:
+            self.context_corrector.reset_context()
