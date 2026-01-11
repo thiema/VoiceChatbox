@@ -92,6 +92,7 @@ python -m src.button_test
 
 Siehe **docs/whisper-setup.md** für Whisper-Setup (OpenAI API).
 Siehe **docs/vosk-setup.md** für Vosk-Setup (lokal, offline).
+Siehe **docs/semantic-sentences.md** für **semantische Satzerkennung** (Satzgrenzen, Satztyp, Sentiment).
 
 Für Autostart siehe **docs/software.md**.
 
@@ -107,6 +108,7 @@ Für Autostart siehe **docs/software.md**.
 - **docs/pcm5122-pinout.md** – **PCM5122 GPIO Pinout & Anschluss** (grafische Darstellung)
 - **docs/whisper-setup.md** – **Whisper-Setup (OpenAI API)** – Spracherkennung mit Whisper
 - **docs/vosk-setup.md** – **Vosk-Setup (lokal, offline)** – Lokale Spracherkennung
+- **docs/semantic-sentences.md** – **Semantische Satzerkennung** – Satzgrenzen, Satztyp, Sentiment-Analyse
 - **docs/troubleshooting.md** – typische Fehler & Lösungen
 
 ---

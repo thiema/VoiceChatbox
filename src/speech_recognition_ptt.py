@@ -12,13 +12,15 @@ from .audio_io import record_while_pressed, _resolve_device_id
 from .oled_display import OledDisplay
 from .gpio_inputs import PushToTalk
 from .led_status import LedStatus, Status
+from .sentence_detection import SemanticSpeechRecognition
 
 
 class PTTLiveRecognition:
     """Push-to-Talk Live-Spracherkennung mit Laufband-Anzeige."""
     
     def __init__(self, client: OpenAI, model_stt: str, ptt: PushToTalk, 
-                 leds: Optional[LedStatus] = None, device: Optional[str | int] = None):
+                 leds: Optional[LedStatus] = None, device: Optional[str | int] = None,
+                 enable_semantic: bool = True, language: str = "de"):
         self.client = client
         self.model_stt = model_stt
         self.ptt = ptt
@@ -29,6 +31,8 @@ class PTTLiveRecognition:
         self.current_text = ""
         self.oled: Optional[OledDisplay] = None
         self.text_callback: Optional[Callable[[str], None]] = None
+        self.enable_semantic = enable_semantic
+        self.semantic_processor = SemanticSpeechRecognition(language=language) if enable_semantic else None
     
     def set_text_callback(self, callback: Callable[[str], None]) -> None:
         """Setze Callback-Funktion, die bei neuem Text aufgerufen wird."""
@@ -129,8 +133,37 @@ class PTTLiveRecognition:
                     else:
                         self.current_text = text
                     
-                    # Display aktualisieren
-                    self._update_display(self.current_text)
+                    # Semantische Satzerkennung (falls aktiviert)
+                    if hasattr(self, 'semantic_processor') and self.semantic_processor:
+                        result = self.semantic_processor.process_text(self.current_text)
+                        
+                        # Zeige neue Sätze mit semantischer Info
+                        for info in result['semantic_info']:
+                            sentence = info['sentence']
+                            analysis = info['analysis']
+                            sentence_type = info['type']
+                            
+                            type_emoji = {
+                                'question': '❓',
+                                'imperative': '❗',
+                                'exclamation': '❗',
+                                'statement': '💬'
+                            }
+                            emoji = type_emoji.get(sentence_type, '💬')
+                            
+                            print(f"{emoji} [{sentence_type.upper()}] {sentence.text}")
+                            if analysis['sentiment'] != 'neutral':
+                                print(f"   Sentiment: {analysis['sentiment']}")
+                        
+                        # Verwende satz-basierte Anzeige für Display
+                        display_text = self.semantic_processor.get_display_text(max_sentences=2)
+                        if display_text:
+                            self._update_display(display_text)
+                        else:
+                            self._update_display(self.current_text)
+                    else:
+                        # Standard: Einfache Text-Anzeige
+                        self._update_display(self.current_text)
                     
                     # Callback aufrufen
                     if self.text_callback:
@@ -168,7 +201,8 @@ class PTTLiveVoskRecognition:
     """Push-to-Talk Live-Spracherkennung mit Vosk (lokal)."""
     
     def __init__(self, vosk_recognizer, ptt: PushToTalk, 
-                 leds: Optional[LedStatus] = None):
+                 leds: Optional[LedStatus] = None,
+                 enable_semantic: bool = True, language: str = "de"):
         from .speech_recognition_vosk import VoskSpeechRecognition
         self.vosk = vosk_recognizer
         self.ptt = ptt
@@ -178,6 +212,8 @@ class PTTLiveVoskRecognition:
         self.current_text = ""
         self.oled: Optional[OledDisplay] = None
         self.text_callback: Optional[Callable[[str], None]] = None
+        self.enable_semantic = enable_semantic
+        self.semantic_processor = SemanticSpeechRecognition(language=language) if enable_semantic else None
     
     def set_text_callback(self, callback: Callable[[str], None]) -> None:
         """Setze Callback-Funktion, die bei neuem Text aufgerufen wird."""
@@ -253,8 +289,37 @@ class PTTLiveVoskRecognition:
                     else:
                         self.current_text = text
                     
-                    # Display aktualisieren
-                    self._update_display(self.current_text)
+                    # Semantische Satzerkennung (falls aktiviert)
+                    if hasattr(self, 'semantic_processor') and self.semantic_processor:
+                        result = self.semantic_processor.process_text(self.current_text)
+                        
+                        # Zeige neue Sätze mit semantischer Info
+                        for info in result['semantic_info']:
+                            sentence = info['sentence']
+                            analysis = info['analysis']
+                            sentence_type = info['type']
+                            
+                            type_emoji = {
+                                'question': '❓',
+                                'imperative': '❗',
+                                'exclamation': '❗',
+                                'statement': '💬'
+                            }
+                            emoji = type_emoji.get(sentence_type, '💬')
+                            
+                            print(f"{emoji} [{sentence_type.upper()}] {sentence.text}")
+                            if analysis['sentiment'] != 'neutral':
+                                print(f"   Sentiment: {analysis['sentiment']}")
+                        
+                        # Verwende satz-basierte Anzeige für Display
+                        display_text = self.semantic_processor.get_display_text(max_sentences=2)
+                        if display_text:
+                            self._update_display(display_text)
+                        else:
+                            self._update_display(self.current_text)
+                    else:
+                        # Standard: Einfache Text-Anzeige
+                        self._update_display(self.current_text)
                     
                     # Callback aufrufen
                     if self.text_callback:
