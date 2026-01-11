@@ -52,10 +52,12 @@ Vosk bietet verschiedene deutsche Modelle:
    cd models
    
    # Kleines Modell (empfohlen)
-   wget https://alphacephei.com/vosk/models/vosk-model-de-0.22.zip
+   wget https://alphacephei.com/vosk/models/vosk-model-small-ru-0.22.zip
+   wget https://alphacephei.com/vosk/models/vosk-model-small-de-0.15.zip
    
    # Oder großes Modell (bessere Genauigkeit)
-   # wget https://alphacephei.com/vosk/models/vosk-model-de-0.6-900k.zip
+   wget https://alphacephei.com/vosk/models/vosk-model-de-0.21.zip
+   wget https://alphacephei.com/vosk/models/vosk-model-ru-0.42.zip
    ```
 
 2. **Modell entpacken:**
