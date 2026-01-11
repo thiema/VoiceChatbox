@@ -12,7 +12,11 @@
 - **PCM5122 Audio Board** (I2S-DAC HAT)
   - Wird direkt auf die GPIO-Pins des Raspberry Pi aufgesteckt
   - Bietet hochwertige Audio-Ausgabe über I2S-Interface
+  - **Audio-Ausgang:** Einzelner Stereo-Ausgang (meist 3.5mm Klinke)
   - Keine USB-Verbindung nötig
+- **Y-Kabel/Adapter** (für Verbindung zum PAM8610)
+  - **Typ:** 3.5mm Stereo → 2× Mono (oder 2× RCA)
+  - Teilt den Stereo-Ausgang in zwei separate Kanäle auf
 
 ### Verstärker
 - **PAM8610** Class-D Stereo-Audio-Verstärker

@@ -65,6 +65,17 @@ raspi-ai-chatbox-de/
    python -m src.main
    ```
 
+**Live-Spracherkennung mit Laufband-Anzeige:**
+```bash
+# Mit OpenAI (Cloud)
+python -m src.main --live-recognition
+
+# Mit Vosk (lokal, offline)
+python -m src.main --live-recognition --vosk
+```
+
+Siehe **docs/vosk-setup.md** für Vosk-Setup.
+
 Für Autostart siehe **docs/software.md**.
 
 ---

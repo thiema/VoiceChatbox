@@ -72,17 +72,25 @@ Diese Anleitung hilft dir beim Anschließen und Testen des Mikrofon-Arrays (ReSp
    - **Strombedarf:** Bis zu 2 A bei voller Leistung (abhängig von Lautstärke)
 
 2. **Audio-Verbindung**
-   - **PCM5122 Audio Board** (Line-Out L/R) → **PAM8610** (Audio-In L/R)
+   - **PCM5122 Audio Board** hat **einen einzelnen Stereo-Audio-Ausgang** (meist 3.5mm Klinke)
+   - **PAM8610 Verstärker** benötigt **zwei separate Eingänge** (L-In und R-In)
+   - **Lösung:** Verwende ein **Y-Kabel** oder **Stereo-zu-Mono-Adapter**, um den Stereo-Ausgang in zwei Kanäle aufzuteilen
    - Verwende abgeschirmte Audio-Kabel für bessere Qualität
-   - **Stereo-Verbindung:** Links und Rechts getrennt anschließen
 
 3. **Verdrahtung**
    ```
-   PCM5122 (Line-Out L) → PAM8610 (Audio-In L)
-   PCM5122 (Line-Out R) → PAM8610 (Audio-In R)
+   PCM5122 (Stereo-Ausgang, 3.5mm) 
+     ↓
+   Y-Kabel / Adapter (Stereo → 2× Mono)
+     ↓
+   ├─→ PAM8610 (Audio-In L)
+   └─→ PAM8610 (Audio-In R)
+   
    PAM8610 (GND) → Raspberry Pi (GND)
    PAM8610 (VCC) → Externe 12V-Quelle (NICHT GPIO!)
    ```
+   
+   **Hinweis:** Das Y-Kabel teilt den Stereo-Ausgang in zwei separate Mono-Signale (Links und Rechts) auf.
 
 4. **Hinweise zum PAM8610**
    - **Leistung:** 10 W pro Kanal (20 W gesamt)
@@ -313,6 +321,8 @@ groups  # sollte 'audio' enthalten sein
 4. **PAM8610 Verstärker prüfen:**
    - **Stromversorgung:** 12V angeschlossen? (NICHT aus GPIO!)
    - **Gemeinsame Masse (GND)** mit Pi verbunden?
+   - **Y-Kabel/Adapter:** Ist das Y-Kabel korrekt angeschlossen?
+     - PCM5122 (Stereo-Ausgang) → Y-Kabel → PAM8610 (L-In und R-In)
    - Audio-Kabel von PCM5122 zu Verstärker korrekt?
    - Verstärker wird warm? (Normal bei Betrieb)
 
@@ -404,6 +414,19 @@ groups  # sollte 'audio' enthalten sein
    aplay -l
    # PCM5122 sollte jetzt erscheinen
    ```
+
+### Problem: Kein Ton trotz korrekter Verbindung
+
+**Lösung:**
+1. **Y-Kabel prüfen:**
+   - Ist das Y-Kabel korrekt angeschlossen?
+   - PCM5122 (Stereo-Ausgang) → Y-Kabel → PAM8610 (L-In und R-In)
+   - Teste das Y-Kabel mit einem anderen Gerät
+
+2. **Stereo vs. Mono:**
+   - Stelle sicher, dass das Y-Kabel den Stereo-Ausgang korrekt in zwei Mono-Signale aufteilt
+   - Links-Kanal → PAM8610 L-In
+   - Rechts-Kanal → PAM8610 R-In
 
 ---
 

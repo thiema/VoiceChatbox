@@ -4,6 +4,7 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 from typing import Optional
+from PIL import Image
 
 from .utils_env import get_env_int, get_env_str
 
@@ -131,3 +132,96 @@ class OledDisplay:
 
     def show_mode_prompt(self) -> None:
         self.show_box_and_text("Echo/Chatbox?")
+    
+    def show_scrolling_text(self, text: str, scroll_speed: int = 2) -> None:
+        """
+        Zeige Text als Laufband (scrollend) auf dem Display.
+        
+        Args:
+            text: Der anzuzeigende Text
+            scroll_speed: Pixel pro Update (Standard: 2)
+        """
+        if not self.device or not self.font:
+            return
+        
+        from luma.core.render import canvas
+        from PIL import Image, ImageDraw, ImageFont
+        
+        left, top, right, bottom = self._bounds()
+        text_area_width = right - left + 1
+        text_area_height = bottom - top + 1
+        
+        # Erstelle temporäres Image für Text-Messung
+        temp_img = Image.new("1", (text_area_width * 2, text_area_height))
+        temp_draw = ImageDraw.Draw(temp_img)
+        
+        # Messe Text-Breite
+        bbox = temp_draw.textbbox((0, 0), text, font=self.font)
+        text_width = bbox[2] - bbox[0]
+        
+        # Wenn Text kürzer als Display, einfach anzeigen
+        if text_width <= text_area_width:
+            self.show_box_and_text(text)
+            return
+        
+        # Erstelle vollständiges Text-Image
+        full_text_img = Image.new("1", (text_width + text_area_width, text_area_height), 0)
+        full_text_draw = ImageDraw.Draw(full_text_img)
+        full_text_draw.text((0, 0), text, font=self.font, fill=1)
+        
+        # Scrolle durch den Text
+        scroll_positions = list(range(0, text_width + text_area_width, scroll_speed))
+        
+        # Zeige nur die aktuelle Position (kein kontinuierliches Scrolling in dieser Funktion)
+        # Für Live-Updates wird die Funktion mehrfach aufgerufen
+        current_pos = max(0, len(scroll_positions) - 1)
+        if current_pos < len(scroll_positions):
+            x_offset = scroll_positions[current_pos]
+            cropped = full_text_img.crop((x_offset, 0, x_offset + text_area_width, text_area_height))
+            
+            with canvas(self.device) as draw:
+                draw.rectangle(self.device.bounding_box, outline="black", fill="black")
+                draw.rectangle((left, top, right, bottom), outline="white", fill="black")
+                # Zeige den aktuellen Ausschnitt
+                self.device.display(cropped)
+    
+    def show_text_scroll(self, text: str) -> None:
+        """
+        Zeige Text mit automatischem Scrolling (vereinfachte Version).
+        Wenn Text zu lang ist, wird er abgeschnitten mit "..." am Ende.
+        Für Live-Spracherkennung: zeigt den neuesten Text-Abschnitt.
+        """
+        if not self.device or not self.font:
+            return
+        
+        from luma.core.render import canvas
+        from PIL import ImageDraw
+        
+        left, top, right, bottom = self._bounds()
+        text_area_width = right - left + 1
+        text_x = left + self.cfg.text_dx
+        text_y = top + self.cfg.text_dy
+        
+        # Erstelle temporäres Image für Text-Messung
+        temp_img = Image.new("1", (text_area_width * 2, bottom - top + 1))
+        temp_draw = ImageDraw.Draw(temp_img)
+        
+        # Messe Text-Breite
+        bbox = temp_draw.textbbox((0, 0), text, font=self.font)
+        text_width = bbox[2] - bbox[0]
+        
+        # Wenn Text passt, einfach anzeigen
+        if text_width <= text_area_width - self.cfg.text_dx * 2:
+            self.show_box_and_text(text)
+            return
+        
+        # Text kürzen: Zeige die letzten Zeichen, die auf das Display passen
+        # Für Laufband: Zeige den neuesten Teil des Textes
+        max_chars = int((text_area_width - self.cfg.text_dx * 2) / (self.cfg.font_size * 0.6))
+        if len(text) > max_chars:
+            # Zeige die letzten max_chars Zeichen
+            display_text = "..." + text[-(max_chars - 3):]
+        else:
+            display_text = text
+        
+        self.show_box_and_text(display_text)

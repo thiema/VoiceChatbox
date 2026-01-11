@@ -20,7 +20,7 @@ Das PCM5122 Audio Board wird **direkt auf die GPIO-Pins** des Raspberry Pi aufge
 │    │                             │     │
 │    └─────────────────────────────┘     │
 │                                         │
-│    [Line-Out L]  [Line-Out R]          │
+│    [Stereo-Ausgang (3.5mm)]            │
 │                                         │
 └─────────────────────────────────────────┘
               │
@@ -137,8 +137,8 @@ PCM5122 Audio Board
 │  └───────────┼───┼───┼───┼───┼───┘  │
 │              │   │   │   │   │       │
 │              │   │   │   │   │       │
-│  [Line-Out L]│   │   │   │   │       │
-│  [Line-Out R]│   │   │   │   │       │
+│  [Stereo-Ausgang]│   │   │   │       │
+│  (3.5mm)         │   │   │   │       │
 │              │   │   │   │   │       │
 └──────────────┼───┼───┼───┼───┼───────┘
                │   │   │   │   │
@@ -256,27 +256,39 @@ Raspberry Pi GPIO:
 
 ## Audio-Ausgang
 
-### Line-Out Anschlüsse
+### Stereo-Ausgang (einzelner Anschluss)
 
 ```
 PCM5122 Audio Board
 ┌─────────────────────────┐
 │                         │
-│  [Line-Out L]  [Line-Out R]
-│      │              │
-│      │              │
-└──────┼──────────────┼──────┘
-       │              │
-       │              │
-       ▼              ▼
-   PAM8610        PAM8610
-   (L-In)         (R-In)
+│  [Stereo-Ausgang]       │
+│  (3.5mm Klinke)        │
+│      │                  │
+│      │                  │
+└──────┼──────────────────┘
+       │
+       │ Y-Kabel / Adapter
+       │ (Stereo → 2× Mono)
+       │
+       ├──────────┬──────────┐
+       │          │          │
+       ▼          ▼          ▼
+   PAM8610    PAM8610    GND
+   (L-In)     (R-In)    (gemeinsam)
 ```
 
 **Anschluss:**
-- **Line-Out L** → PAM8610 Audio-In L
-- **Line-Out R** → PAM8610 Audio-In R
+- **PCM5122** hat **einen einzelnen Stereo-Ausgang** (meist 3.5mm Klinke)
+- **Y-Kabel/Adapter** teilt den Stereo-Ausgang in zwei Mono-Signale:
+  - **Links-Kanal** → PAM8610 Audio-In L
+  - **Rechts-Kanal** → PAM8610 Audio-In R
 - **GND** → Gemeinsame Masse mit PAM8610
+
+**Y-Kabel/Adapter:**
+- **Typ:** 3.5mm Stereo → 2× Mono (oder 2× RCA)
+- **Funktion:** Teilt das Stereo-Signal in zwei separate Kanäle auf
+- **Verfügbar:** In Elektronikläden oder online (z. B. "3.5mm Stereo to Dual Mono Adapter")
 
 ---
 

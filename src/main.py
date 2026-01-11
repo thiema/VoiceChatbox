@@ -111,6 +111,19 @@ def main():
         from .oled_test import run_oled_test
         run_oled_test()
         return
+    if "--live-recognition" in sys.argv or "--live-stt" in sys.argv:
+        # Prüfe, ob Vosk verwendet werden soll
+        use_vosk = "--vosk" in sys.argv or os.getenv("USE_VOSK", "").lower() in ("1", "true", "yes")
+        
+        if use_vosk:
+            from .speech_recognition_vosk import run_live_vosk_recognition
+            settings = load_settings()
+            model_path = settings.vosk_model_path or "models/vosk-model-de-0.22"
+            run_live_vosk_recognition(model_path)
+        else:
+            from .speech_recognition_live import run_live_recognition
+            run_live_recognition()
+        return
 
     forced_mode = None
     if "--mode" in sys.argv:

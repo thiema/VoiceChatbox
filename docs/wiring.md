@@ -19,7 +19,7 @@ Für Pin-Details siehe **docs/gpio-mapping.md**.
 #### PCM5122 Audio Board
 - **Aufstecken:** Direkt auf GPIO-Pins des Raspberry Pi (Pin 1 zu Pin 1)
 - **Versorgung:** Über GPIO-Pins (keine separate Stromversorgung)
-- **Audio-Ausgang:** Line-Out Links (L) und Rechts (R)
+- **Audio-Ausgang:** **Einzelner Stereo-Ausgang** (meist 3.5mm Klinke)
 
 #### PAM8610 Verstärker
 - **Stromversorgung:**
@@ -27,9 +27,12 @@ Für Pin-Details siehe **docs/gpio-mapping.md**.
   - **GND:** → Raspberry Pi GND (gemeinsame Masse)
   - **WICHTIG:** NICHT aus GPIO-Pins speisen!
 - **Audio-Eingang:**
-  - **L-In:** → PCM5122 Line-Out L
-  - **R-In:** → PCM5122 Line-Out R
+  - **L-In:** → PCM5122 Stereo-Ausgang (via Y-Kabel/Adapter, Links-Kanal)
+  - **R-In:** → PCM5122 Stereo-Ausgang (via Y-Kabel/Adapter, Rechts-Kanal)
   - **GND:** → PCM5122 GND (gemeinsame Masse)
+- **Y-Kabel/Adapter:** 
+  - **3.5mm Stereo** → **2× Mono** (oder 2× RCA)
+  - Teilt den Stereo-Ausgang in zwei separate Kanäle auf
 - **Audio-Ausgang:**
   - **L+ / L-:** → Lautsprecher Links
   - **R+ / R-:** → Lautsprecher Rechts
