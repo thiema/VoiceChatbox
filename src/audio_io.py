@@ -1,5 +1,6 @@
 from __future__ import annotations
 import io
+import sys
 import wave
 import numpy as np
 import sounddevice as sd
@@ -43,15 +44,47 @@ def record_while_pressed(is_pressed_fn, samplerate: int = 16000, device: str | i
     frames = []
     
     device_id = _resolve_device_id(device)
-
-    with sd.InputStream(device=device_id, samplerate=samplerate, channels=channels, dtype=dtype):
+    
+    # Verwende InputStream mit Callback statt sd.rec() um Konflikte zu vermeiden
+    def callback(indata, frames_count, time_info, status):
+        if status:
+            print(f"Audio-Status: {status}", file=sys.stderr)
+        frames.append(indata.copy())
+    
+    # Erstelle InputStream und starte Aufnahme
+    stream = sd.InputStream(
+        device=device_id,
+        samplerate=samplerate,
+        channels=channels,
+        dtype=dtype,
+        callback=callback,
+        blocksize=int(samplerate * 0.1)  # 0.1 Sekunden Blöcke
+    )
+    
+    try:
+        stream.start()
+        
+        # Warte während Taster gedrückt ist
         while is_pressed_fn():
-            data, _overflowed = sd.rec(int(samplerate * 0.1), samplerate=samplerate, channels=channels, dtype=dtype), None
-            sd.wait()
-            frames.append(data.copy())
+            sd.sleep(100)  # 100ms Pause
+        
+        # Kurze Pause um letzten Block zu erfassen
+        sd.sleep(100)
+        
+    finally:
+        stream.stop()
+        stream.close()
+    
+    # Konkateniere alle Frames
+    if frames:
+        audio = np.concatenate(frames, axis=0)
+        # Konvertiere zu mono falls nötig
+        if len(audio.shape) > 1:
+            audio = audio[:, 0]
+    else:
+        audio = np.zeros((0,), dtype=np.int16)
 
-    audio = np.concatenate(frames, axis=0) if frames else np.zeros((0, 1), dtype=np.int16)
-
+    # Konvertiere zu WAV
     buf = io.BytesIO()
     with wave.open(buf, "wb") as wf:
         wf.setnchannels(channels)
