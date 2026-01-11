@@ -109,24 +109,32 @@ class VoskSpeechRecognition:
         try:
             from vosk import KaldiRecognizer
             
+            # Erstelle Recognizer mit optimierten Einstellungen
             rec = KaldiRecognizer(self.recognizer, self.samplerate)
-            rec.SetWords(False)
+            rec.SetWords(False)  # Nur Text, keine Wort-Timestamps
+            
+            # Alternative: SetWords(True) für mehr Kontext, aber langsamer
+            # rec.SetWords(True)
             
             # Konvertiere zu bytes
             audio_bytes = audio_data.tobytes()
             
-            # Verarbeite in Chunks
-            chunk_size = 4000 * 2  # 4000 Frames * 2 bytes (int16)
+            # Verarbeite in kleineren Chunks für bessere Erkennung
+            # Kleinere Chunks = häufigeres Processing = bessere Ergebnisse
+            chunk_size = 4000 * 2  # 4000 Frames * 2 bytes (int16) = ~0.5 Sekunden
             text_parts = []
             
             for i in range(0, len(audio_bytes), chunk_size):
                 chunk = audio_bytes[i:i + chunk_size]
+                if len(chunk) == 0:
+                    break
+                    
                 if rec.AcceptWaveform(chunk):
                     result = json.loads(rec.Result())
                     if result.get("text"):
                         text_parts.append(result["text"])
             
-            # Finale Erkennung
+            # Finale Erkennung (wichtig für letzten Teil)
             final_result = json.loads(rec.FinalResult())
             if final_result.get("text"):
                 text_parts.append(final_result["text"])
@@ -140,10 +148,21 @@ class VoskSpeechRecognition:
 class LiveVoskRecognition:
     """Live Spracherkennung mit Vosk (lokal, offline)."""
     
-    def __init__(self, model_path: str, device: Optional[str | int] = None):
+    def __init__(self, model_path: str, device: Optional[str | int] = None, 
+                 chunk_duration: float = 3.0, enable_audio_processing: bool = True):
+        """
+        Initialisiere Live-Vosk-Spracherkennung.
+        
+        Args:
+            model_path: Pfad zum Vosk-Modell
+            device: Audio-Eingabegerät
+            chunk_duration: Dauer pro Chunk in Sekunden (länger = besser, aber langsamer)
+            enable_audio_processing: Audio-Vorverarbeitung aktivieren (Normalisierung, etc.)
+        """
         self.vosk = VoskSpeechRecognition(model_path, device)
         self.samplerate = 16000
-        self.chunk_duration = 2.0  # Sekunden pro Chunk
+        self.chunk_duration = chunk_duration  # Längere Chunks = besserer Kontext
+        self.enable_audio_processing = enable_audio_processing
         self.is_running = False
         self.current_text = ""
         self.oled: Optional[OledDisplay] = None
@@ -152,6 +171,45 @@ class LiveVoskRecognition:
     def set_text_callback(self, callback: Callable[[str], None]) -> None:
         """Setze Callback-Funktion, die bei neuem Text aufgerufen wird."""
         self.text_callback = callback
+    
+    def _normalize_audio(self, audio: np.ndarray) -> np.ndarray:
+        """Normalisiere Audio für bessere Erkennung."""
+        # Konvertiere zu float32 für Verarbeitung
+        audio_float = audio.astype(np.float32) / 32768.0
+        
+        # Entferne DC-Offset
+        audio_float = audio_float - np.mean(audio_float)
+        
+        # Normalisiere auf -1.0 bis 1.0 (verhindert Clipping)
+        max_val = np.max(np.abs(audio_float))
+        if max_val > 0:
+            # Leichte Normalisierung (nicht zu aggressiv, sonst Verzerrung)
+            audio_float = audio_float / (max_val * 1.1)  # 10% Headroom
+        
+        # Konvertiere zurück zu int16
+        audio_normalized = (audio_float * 32767.0).astype(np.int16)
+        return audio_normalized
+    
+    def _apply_highpass_filter(self, audio: np.ndarray, cutoff: float = 80.0) -> np.ndarray:
+        """Einfacher High-Pass Filter um tiefe Frequenzen zu entfernen."""
+        try:
+            from scipy import signal
+            nyquist = self.samplerate / 2
+            normal_cutoff = cutoff / nyquist
+            b, a = signal.butter(2, normal_cutoff, btype='high', analog=False)
+            audio_float = audio.astype(np.float32) / 32768.0
+            filtered = signal.filtfilt(b, a, audio_float)
+            return (filtered * 32767.0).astype(np.int16)
+        except ImportError:
+            # Falls scipy nicht verfügbar, keine Filterung
+            return audio
+    
+    def _detect_speech(self, audio: np.ndarray, threshold: float = 0.01) -> bool:
+        """Einfache Voice Activity Detection (VAD)."""
+        # Berechne RMS (Root Mean Square) für Signalpegel
+        audio_float = audio.astype(np.float32) / 32768.0
+        rms = np.sqrt(np.mean(audio_float ** 2))
+        return rms > threshold
     
     def _record_chunk(self) -> np.ndarray:
         """Nimmt einen Audio-Chunk auf und gibt numpy-Array zurück."""
@@ -172,6 +230,14 @@ class LiveVoskRecognition:
         if len(recording.shape) > 1:
             recording = recording[:, 0]
         
+        # Audio-Vorverarbeitung für bessere Erkennung
+        if self.enable_audio_processing:
+            # High-Pass Filter (entfernt tiefe Frequenzen/Rauschen)
+            recording = self._apply_highpass_filter(recording, cutoff=80.0)
+            
+            # Normalisierung
+            recording = self._normalize_audio(recording)
+        
         return recording
     
     def _update_display(self, text: str) -> None:
@@ -186,6 +252,11 @@ class LiveVoskRecognition:
             audio_data = self._record_chunk()
             
             if not self.is_running:
+                return
+            
+            # Voice Activity Detection - überspringe leise Chunks
+            if not self._detect_speech(audio_data, threshold=0.005):
+                # Keine Sprache erkannt, überspringe
                 return
             
             # Transkribieren (direkt mit numpy-Array)
@@ -207,6 +278,9 @@ class LiveVoskRecognition:
                 
                 print(f"Erkannt: {text}")
                 print(f"Gesamt: {self.current_text}")
+            else:
+                # Kein Text erkannt - könnte auf schlechte Audio-Qualität hindeuten
+                pass
         except Exception as e:
             print(f"Fehler bei Verarbeitung: {e}")
     
