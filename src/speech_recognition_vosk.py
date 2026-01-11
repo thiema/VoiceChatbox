@@ -91,7 +91,11 @@ class VoskSpeechRecognition:
             if final_result.get("text"):
                 text_parts.append(final_result["text"])
             
-            return " ".join(text_parts).strip()
+            result_text = " ".join(text_parts).strip()
+            # Stelle sicher, dass Leerzeichen zwischen Wörtern vorhanden sind
+            # Normalisiere mehrfache Leerzeichen zu einem
+            result_text = re.sub(r'\s+', ' ', result_text)
+            return result_text
         except Exception as e:
             print(f"Fehler bei Vosk-Transkription: {e}")
             return ""
@@ -139,7 +143,11 @@ class VoskSpeechRecognition:
             if final_result.get("text"):
                 text_parts.append(final_result["text"])
             
-            return " ".join(text_parts).strip()
+            result_text = " ".join(text_parts).strip()
+            # Stelle sicher, dass Leerzeichen zwischen Wörtern vorhanden sind
+            # Normalisiere mehrfache Leerzeichen zu einem
+            result_text = re.sub(r'\s+', ' ', result_text)
+            return result_text
         except Exception as e:
             print(f"Fehler bei Vosk-Stream-Transkription: {e}")
             return ""
@@ -268,6 +276,9 @@ class LiveVoskRecognition:
             text = self.vosk.transcribe_audio_stream(audio_data)
             
             if text:
+                # Stelle sicher, dass Text Leerzeichen hat
+                text = re.sub(r'\s+', ' ', text).strip()
+                
                 # Prüfe, ob Text bereits vorhanden ist (verhindert Doppel-Ausgabe)
                 if self.current_text and text.lower() in self.current_text.lower():
                     # Überspringe, wenn bereits vorhanden

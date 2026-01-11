@@ -2,6 +2,7 @@ from __future__ import annotations
 import io
 import wave
 import json
+import re
 import numpy as np
 import sounddevice as sd
 from typing import Callable, Optional, Dict, List, Tuple
@@ -130,7 +131,11 @@ class SmartMultiLanguageVoskRecognition:
         if final_result.get("text"):
             text_parts.append(final_result["text"])
         
-        return " ".join(text_parts).strip()
+        result_text = " ".join(text_parts).strip()
+        # Stelle sicher, dass Leerzeichen zwischen Wörtern vorhanden sind
+        # Normalisiere mehrfache Leerzeichen zu einem
+        result_text = re.sub(r'\s+', ' ', result_text)
+        return result_text
     
     def _transcribe_audio_en(self, audio_data: np.ndarray) -> str:
         """Transkribiere Audio mit englischem Modell (nur wenn verfügbar)."""
@@ -161,7 +166,11 @@ class SmartMultiLanguageVoskRecognition:
         if final_result.get("text"):
             text_parts.append(final_result["text"])
         
-        return " ".join(text_parts).strip()
+        result_text = " ".join(text_parts).strip()
+        # Stelle sicher, dass Leerzeichen zwischen Wörtern vorhanden sind
+        # Normalisiere mehrfache Leerzeichen zu einem
+        result_text = re.sub(r'\s+', ' ', result_text)
+        return result_text
     
     def _audio_to_wav_bytes(self, audio_data: np.ndarray) -> bytes:
         """Konvertiere numpy-Array zu WAV-Bytes."""
@@ -301,6 +310,9 @@ class SmartMultiLanguageVoskRecognition:
             text = self._merge_texts(text_de, text_en)
             
             if text:
+                # Stelle sicher, dass Text Leerzeichen hat
+                text = re.sub(r'\s+', ' ', text).strip()
+                
                 # Nur neuen Text hinzufügen (verhindert Doppel-Ausgabe)
                 # Prüfe, ob Text bereits verarbeitet wurde
                 if self.current_text:

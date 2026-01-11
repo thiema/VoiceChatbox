@@ -296,14 +296,16 @@ class WordCorrector:
         Returns:
             Tupel: (korrigierter_text, liste_von_korrekturen)
         """
-        words = re.findall(r'(\b\w+\b|[^\w\s])', text)
-        corrected_words = []
+        # Teile Text in Wörter und Satzzeichen, behalte Leerzeichen
+        # Verwende ein Pattern, das Wörter, Satzzeichen und Leerzeichen erfasst
+        tokens = re.findall(r'\b\w+\b|[^\w\s]|\s+', text)
+        corrected_tokens = []
         corrections = []
         
-        for word in words:
-            # Nur Wörter korrigieren (keine Satzzeichen)
-            if re.match(r'\b\w+\b', word):
-                corrected, confidence, original = self.correct_word(word, context)
+        for token in tokens:
+            # Prüfe, ob es ein Wort ist (nicht Leerzeichen, nicht Satzzeichen)
+            if re.match(r'\b\w+\b', token):
+                corrected, confidence, original = self.correct_word(token, context)
                 
                 if original and corrected != original:
                     corrections.append({
@@ -311,13 +313,17 @@ class WordCorrector:
                         'corrected': corrected,
                         'confidence': confidence
                     })
-                    corrected_words.append(corrected)
+                    corrected_tokens.append(corrected)
                 else:
-                    corrected_words.append(word)
+                    corrected_tokens.append(token)
             else:
-                corrected_words.append(word)
+                # Leerzeichen oder Satzzeichen - behalte wie es ist
+                corrected_tokens.append(token)
         
-        corrected_text = ''.join(corrected_words)
+        # Füge alle Tokens zusammen (Leerzeichen bleiben erhalten)
+        corrected_text = ''.join(corrected_tokens)
+        # Normalisiere mehrfache Leerzeichen zu einem
+        corrected_text = re.sub(r'\s+', ' ', corrected_text).strip()
         return (corrected_text, corrections)
 
 

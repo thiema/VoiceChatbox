@@ -1,6 +1,7 @@
 from __future__ import annotations
 import io
 import wave
+import re
 import numpy as np
 import sounddevice as sd
 import threading
@@ -106,6 +107,9 @@ class LiveSpeechRecognition:
                 if self.current_text and text.lower() in self.current_text.lower():
                     # Überspringe, wenn bereits vorhanden
                     return
+                
+                # Stelle sicher, dass Text Leerzeichen hat
+                text = re.sub(r'\s+', ' ', text).strip()
                 
                 # Semantische Satzerkennung mit kontext-basierter Korrektur
                 if self.semantic_processor:

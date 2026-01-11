@@ -104,6 +104,9 @@ class MultiLanguageVoskRecognition:
                     text_parts.append(final_result["text"])
                 
                 text = " ".join(text_parts).strip()
+                # Stelle sicher, dass Leerzeichen zwischen Wörtern vorhanden sind
+                # Normalisiere mehrfache Leerzeichen zu einem
+                text = re.sub(r'\s+', ' ', text)
                 if text:
                     results[lang] = text
                     
