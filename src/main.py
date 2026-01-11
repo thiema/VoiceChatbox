@@ -129,31 +129,47 @@ def main():
             use_vosk = "--vosk" in sys.argv or os.getenv("USE_VOSK", "").lower() in ("1", "true", "yes")
             
             if use_vosk:
-                # Prüfe, ob mehrsprachig verwendet werden soll
-                use_multilang = "--multilang" in sys.argv or os.getenv("USE_MULTILANG", "").lower() in ("1", "true", "yes")
+                # Prüfe, ob intelligente mehrsprachige Erkennung verwendet werden soll
+                use_smart_multilang = "--smart-multilang" in sys.argv or os.getenv("USE_SMART_MULTILANG", "").lower() in ("1", "true", "yes")
                 
-                if use_multilang:
-                    from .speech_recognition_multilang import run_multilang_vosk_recognition
+                if use_smart_multilang:
+                    from .smart_multilang import run_smart_multilang_recognition
                     settings = load_settings()
                     
-                    model_paths = {}
-                    if settings.vosk_model_path:
-                        model_paths["de"] = settings.vosk_model_path
-                    if settings.vosk_model_path_en:
-                        model_paths["en"] = settings.vosk_model_path_en
+                    model_path_de = settings.vosk_model_path or "models/vosk-model-de-0.22"
+                    model_path_en = getattr(settings, 'vosk_model_path_en', None)
                     
-                    mode = "best"
-                    if "--combined" in sys.argv:
-                        mode = "combined"
-                    elif "--all" in sys.argv:
-                        mode = "all"
-                    
-                    run_multilang_vosk_recognition(model_paths=model_paths if model_paths else None, mode=mode)
+                    run_smart_multilang_recognition(
+                        model_path_de=model_path_de,
+                        model_path_en=model_path_en,
+                        device=settings.audio_input_device
+                    )
                 else:
-                    from .speech_recognition_vosk import run_live_vosk_recognition
-                    settings = load_settings()
-                    model_path = settings.vosk_model_path or "models/vosk-model-de-0.22"
-                    run_live_vosk_recognition(model_path)
+                    # Prüfe, ob mehrsprachig verwendet werden soll
+                    use_multilang = "--multilang" in sys.argv or os.getenv("USE_MULTILANG", "").lower() in ("1", "true", "yes")
+                    
+                    if use_multilang:
+                        from .speech_recognition_multilang import run_multilang_vosk_recognition
+                        settings = load_settings()
+                        
+                        model_paths = {}
+                        if settings.vosk_model_path:
+                            model_paths["de"] = settings.vosk_model_path
+                        if settings.vosk_model_path_en:
+                            model_paths["en"] = settings.vosk_model_path_en
+                        
+                        mode = "best"
+                        if "--combined" in sys.argv:
+                            mode = "combined"
+                        elif "--all" in sys.argv:
+                            mode = "all"
+                        
+                        run_multilang_vosk_recognition(model_paths=model_paths if model_paths else None, mode=mode)
+                    else:
+                        from .speech_recognition_vosk import run_live_vosk_recognition
+                        settings = load_settings()
+                        model_path = settings.vosk_model_path or "models/vosk-model-de-0.22"
+                        run_live_vosk_recognition(model_path)
             else:
                 from .speech_recognition_live import run_live_recognition
                 run_live_recognition()

@@ -102,6 +102,11 @@ class LiveSpeechRecognition:
             text = self._transcribe_audio(wav_bytes)
             
             if text:
+                # Prüfe, ob Text bereits vorhanden ist (verhindert Doppel-Ausgabe)
+                if self.current_text and text.lower() in self.current_text.lower():
+                    # Überspringe, wenn bereits vorhanden
+                    return
+                
                 # Semantische Satzerkennung mit kontext-basierter Korrektur
                 if self.semantic_processor:
                     # Text temporär hinzufügen für Verarbeitung

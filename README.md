@@ -75,13 +75,17 @@ python -m src.main --live-recognition --vosk  # Mit Vosk
 python -m src.main --live-recognition --ptt
 python -m src.main --live-recognition --ptt --vosk  # Mit Vosk
 
-# Mehrsprachig (Deutsch + Englisch) - NEU!
+# Intelligente mehrsprachige Erkennung (DE primär, EN nur für bestimmte Wörter) - NEU!
+python -m src.main --live-recognition --vosk --smart-multilang
+
+# Mehrsprachig (Deutsch + Englisch) - Standard
 python -m src.main --live-recognition --vosk --multilang
 python -m src.main --live-recognition --vosk --multilang --combined  # Kombiniert
 python -m src.main --live-recognition --ptt --vosk --multilang  # Push-to-Talk mehrsprachig
 ```
 
-Siehe **docs/multilang-setup.md** für Setup-Anleitung.
+Siehe **docs/multilang-setup.md** für Setup-Anleitung (Standard-Mehrsprachig).
+Siehe **docs/smart-multilang.md** für intelligente mehrsprachige Erkennung (DE primär, EN nur für bestimmte Wörter).
 
 **Taster-Test (GPIO17, Pin 11):**
 ```bash
@@ -111,6 +115,7 @@ Für Autostart siehe **docs/software.md**.
 - **docs/vosk-setup.md** – **Vosk-Setup (lokal, offline)** – Lokale Spracherkennung
 - **docs/semantic-sentences.md** – **Semantische Satzerkennung** – Satzgrenzen, Satztyp, Sentiment-Analyse
 - **docs/context-correction.md** – **Kontext-basierte Wortkorrektur** – Kontext-Erkennung, Wort-Korrektur
+- **docs/smart-multilang.md** – **Intelligente mehrsprachige Erkennung** – DE primär, EN nur für bestimmte Wörter
 - **docs/troubleshooting.md** – typische Fehler & Lösungen
 
 ---
