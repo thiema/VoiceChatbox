@@ -67,14 +67,15 @@ raspi-ai-chatbox-de/
 
 **Live-Spracherkennung mit Laufband-Anzeige:**
 ```bash
-# Mit OpenAI (Cloud)
+# Mit Whisper (OpenAI API, Standard)
 python -m src.main --live-recognition
 
 # Mit Vosk (lokal, offline)
 python -m src.main --live-recognition --vosk
 ```
 
-Siehe **docs/vosk-setup.md** für Vosk-Setup.
+Siehe **docs/whisper-setup.md** für Whisper-Setup (OpenAI API).
+Siehe **docs/vosk-setup.md** für Vosk-Setup (lokal, offline).
 
 Für Autostart siehe **docs/software.md**.
 
@@ -88,6 +89,8 @@ Für Autostart siehe **docs/software.md**.
 - **docs/software.md** – Installation, Audio‑Setup, Autostart (systemd)
 - **docs/audio-setup.md** – **Audio-Setup & Test-Anleitung** (Mikrofon & Lautsprecher)
 - **docs/pcm5122-pinout.md** – **PCM5122 GPIO Pinout & Anschluss** (grafische Darstellung)
+- **docs/whisper-setup.md** – **Whisper-Setup (OpenAI API)** – Spracherkennung mit Whisper
+- **docs/vosk-setup.md** – **Vosk-Setup (lokal, offline)** – Lokale Spracherkennung
 - **docs/troubleshooting.md** – typische Fehler & Lösungen
 
 ---
