@@ -323,14 +323,130 @@ def run_ptt_live_recognition(use_vosk: bool = False):
         oled = None
     
     if use_vosk:
-        # Vosk (lokal)
-        from .speech_recognition_vosk import VoskSpeechRecognition
+        # Prüfe, ob mehrsprachig verwendet werden soll
+        use_multilang = os.getenv("USE_MULTILANG", "").lower() in ("1", "true", "yes")
         
-        model_path = settings.vosk_model_path or os.getenv("VOSK_MODEL_PATH", "models/vosk-model-de-0.22")
-        vosk = VoskSpeechRecognition(model_path, device=settings.audio_input_device)
-        
-        recognizer = PTTLiveVoskRecognition(vosk, ptt, leds)
-        recognizer.start(oled=oled)
+        if use_multilang:
+            # Mehrsprachige Vosk-Erkennung
+            from .speech_recognition_multilang import MultiLanguageVoskRecognition
+            
+            model_paths = {}
+            if settings.vosk_model_path:
+                model_paths["de"] = settings.vosk_model_path
+            if settings.vosk_model_path_en:
+                model_paths["en"] = settings.vosk_model_path_en
+            
+            if not model_paths:
+                print("❌ Keine Modell-Pfade konfiguriert für mehrsprachige Erkennung!")
+                return
+            
+            multilang_vosk = MultiLanguageVoskRecognition(model_paths, device=settings.audio_input_device)
+            
+            # Erstelle Wrapper für PTT
+            class PTTMultiLangVoskRecognition:
+                def __init__(self, multilang_vosk, ptt, leds):
+                    self.multilang_vosk = multilang_vosk
+                    self.ptt = ptt
+                    self.leds = leds
+                    self.samplerate = 16000
+                    self.is_running = False
+                    self.current_text = ""
+                    self.oled = None
+                    self.mode = "best"
+                
+                def start(self, oled=None):
+                    self.oled = oled
+                    self.is_running = True
+                    self.current_text = ""
+                    
+                    if self.oled:
+                        self.oled.show_ready()
+                    if self.leds:
+                        self.leds.set(Status.IDLE)
+                    
+                    print("="*60)
+                    print("Push-to-Talk Mehrsprachige Spracherkennung (Vosk)")
+                    print("="*60)
+                    print(f"Sprachen: {', '.join(self.multilang_vosk.models.keys())}")
+                    print("Drücke und halte den Taster gedrückt zum Sprechen.")
+                    print("Strg+C zum Beenden.")
+                    print("="*60)
+                    print()
+                    
+                    try:
+                        while self.is_running:
+                            self.ptt.wait_for_press()
+                            
+                            if not self.is_running:
+                                break
+                            
+                            if self.leds:
+                                self.leds.set(Status.LISTENING)
+                            if self.oled:
+                                self.oled.show_listening()
+                            
+                            print("🎤 Aufnahme läuft...")
+                            
+                            from .audio_io import record_while_pressed
+                            wav_bytes = record_while_pressed(
+                                lambda: self.ptt.is_pressed,
+                                samplerate=self.samplerate,
+                                device=self.multilang_vosk.device_id
+                            )
+                            
+                            if not self.is_running:
+                                break
+                            
+                            if self.leds:
+                                self.leds.set(Status.THINKING)
+                            if self.oled:
+                                self.oled.show_thinking()
+                            
+                            print("🤔 Transkribiere (mehrsprachig)...")
+                            
+                            lang, text = self.multilang_vosk.transcribe_audio_best(wav_bytes)
+                            
+                            if text:
+                                if self.current_text:
+                                    self.current_text += " " + text
+                                else:
+                                    self.current_text = text
+                                
+                                if self.oled:
+                                    self.oled.show_text_scroll(self.current_text)
+                                
+                                print(f"✅ [{lang.upper()}] {text}")
+                                print(f"📝 Gesamt: {self.current_text}")
+                                print()
+                            
+                            if self.leds:
+                                self.leds.set(Status.IDLE)
+                            if self.oled:
+                                self.oled.show_ready()
+                                
+                    except KeyboardInterrupt:
+                        print("\nBeendet.")
+                    finally:
+                        self.stop()
+                
+                def stop(self):
+                    self.is_running = False
+                    if self.leds:
+                        self.leds.set(Status.IDLE)
+                    if self.oled:
+                        self.oled.clear()
+            
+            recognizer = PTTMultiLangVoskRecognition(multilang_vosk, ptt, leds)
+            recognizer.start(oled=oled)
+        else:
+            # Einsprachige Vosk-Erkennung
+            from .speech_recognition_vosk import VoskSpeechRecognition
+            
+            model_path = settings.vosk_model_path or os.getenv("VOSK_MODEL_PATH", "models/vosk-model-de-0.22")
+            vosk = VoskSpeechRecognition(model_path, device=settings.audio_input_device)
+            
+            recognizer = PTTLiveVoskRecognition(vosk, ptt, leds)
+            recognizer.start(oled=oled)
     else:
         # OpenAI (Cloud)
         client = OpenAI(api_key=settings.openai_api_key)

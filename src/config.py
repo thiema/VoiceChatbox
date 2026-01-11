@@ -32,6 +32,7 @@ class Settings:
     
     # Vosk (lokales Sprachmodell)
     vosk_model_path: str | None
+    vosk_model_path_en: str | None  # Englisch
 
 def load_settings() -> Settings:
     key = os.getenv("OPENAI_API_KEY", "").strip()
@@ -57,4 +58,5 @@ def load_settings() -> Settings:
         audio_output_device=os.getenv("AUDIO_OUTPUT_DEVICE") or None,
         
         vosk_model_path=os.getenv("VOSK_MODEL_PATH") or None,
+        vosk_model_path_en=os.getenv("VOSK_MODEL_PATH_EN") or None,
     )

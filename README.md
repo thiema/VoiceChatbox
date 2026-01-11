@@ -71,10 +71,17 @@ raspi-ai-chatbox-de/
 python -m src.main --live-recognition
 python -m src.main --live-recognition --vosk  # Mit Vosk
 
-# Push-to-Talk (mit Taster) - NEU!
+# Push-to-Talk (mit Taster)
 python -m src.main --live-recognition --ptt
 python -m src.main --live-recognition --ptt --vosk  # Mit Vosk
+
+# Mehrsprachig (Deutsch + Englisch) - NEU!
+python -m src.main --live-recognition --vosk --multilang
+python -m src.main --live-recognition --vosk --multilang --combined  # Kombiniert
+python -m src.main --live-recognition --ptt --vosk --multilang  # Push-to-Talk mehrsprachig
 ```
+
+Siehe **docs/multilang-setup.md** für Setup-Anleitung.
 
 **Taster-Test (GPIO17, Pin 11):**
 ```bash
