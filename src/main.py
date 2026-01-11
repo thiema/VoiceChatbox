@@ -111,6 +111,10 @@ def main():
         from .oled_test import run_oled_test
         run_oled_test()
         return
+    if "--test-button" in sys.argv or "--test-taster" in sys.argv:
+        from .button_test import run_button_test
+        run_button_test()
+        return
     if "--live-recognition" in sys.argv or "--live-stt" in sys.argv:
         # Prüfe, ob Vosk verwendet werden soll
         use_vosk = "--vosk" in sys.argv or os.getenv("USE_VOSK", "").lower() in ("1", "true", "yes")

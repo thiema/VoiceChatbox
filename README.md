@@ -74,6 +74,13 @@ python -m src.main --live-recognition
 python -m src.main --live-recognition --vosk
 ```
 
+**Taster-Test (GPIO17, Pin 11):**
+```bash
+python -m src.main --test-button
+# Oder direkt:
+python -m src.button_test
+```
+
 Siehe **docs/whisper-setup.md** für Whisper-Setup (OpenAI API).
 Siehe **docs/vosk-setup.md** für Vosk-Setup (lokal, offline).
 
