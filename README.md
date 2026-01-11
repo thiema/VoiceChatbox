@@ -67,11 +67,13 @@ raspi-ai-chatbox-de/
 
 **Live-Spracherkennung mit Laufband-Anzeige:**
 ```bash
-# Mit Whisper (OpenAI API, Standard)
+# Kontinuierliche Aufnahme (ohne Taster)
 python -m src.main --live-recognition
+python -m src.main --live-recognition --vosk  # Mit Vosk
 
-# Mit Vosk (lokal, offline)
-python -m src.main --live-recognition --vosk
+# Push-to-Talk (mit Taster) - NEU!
+python -m src.main --live-recognition --ptt
+python -m src.main --live-recognition --ptt --vosk  # Mit Vosk
 ```
 
 **Taster-Test (GPIO17, Pin 11):**
