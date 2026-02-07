@@ -9,6 +9,7 @@ from pathlib import Path
 
 from .audio_io import _resolve_device_id, select_input_device
 from .oled_display import OledDisplay
+from .chat_assistant import ChatAssistant
 
 
 class MultiLanguageVoskRecognition:
@@ -161,7 +162,8 @@ class LiveMultiLanguageVoskRecognition:
     """Live mehrsprachige Spracherkennung mit Vosk."""
     
     def __init__(self, model_paths: Dict[str, str], device: Optional[str | int] = None,
-                 chunk_duration: float = 3.0, mode: str = "best"):
+                 chunk_duration: float = 3.0, mode: str = "best",
+                 chat_assistant: Optional[ChatAssistant] = None):
         """
         Initialisiere Live mehrsprachige Spracherkennung.
         
@@ -179,6 +181,8 @@ class LiveMultiLanguageVoskRecognition:
         self.current_text = ""
         self.oled: Optional[OledDisplay] = None
         self.text_callback: Optional[Callable[[str], None]] = None
+        self.chat_assistant = chat_assistant
+        self._last_chat_text: Optional[str] = None
     
     def set_text_callback(self, callback: Callable[[str], None]) -> None:
         """Setze Callback-Funktion, die bei neuem Text aufgerufen wird."""
@@ -238,6 +242,9 @@ class LiveMultiLanguageVoskRecognition:
                     else:
                         self.current_text = text
                     print(f"[{lang.upper()}] {text}")
+                    if self.chat_assistant and self._last_chat_text != text:
+                        self._last_chat_text = text
+                        self.chat_assistant.handle_text(text)
             
             elif self.mode == "combined":
                 text = self.vosk.transcribe_audio_combined(wav_bytes)
@@ -247,6 +254,9 @@ class LiveMultiLanguageVoskRecognition:
                     else:
                         self.current_text = text
                     print(f"[KOMBINIERT] {text}")
+                    if self.chat_assistant and self._last_chat_text != text:
+                        self._last_chat_text = text
+                        self.chat_assistant.handle_text(text)
             
             elif self.mode == "all":
                 results = self.vosk.transcribe_audio(wav_bytes)
@@ -260,6 +270,9 @@ class LiveMultiLanguageVoskRecognition:
                         self.current_text += " " + text
                     else:
                         self.current_text = text
+                    if self.chat_assistant and self._last_chat_text != text:
+                        self._last_chat_text = text
+                        self.chat_assistant.handle_text(text)
             
             if self.current_text:
                 self._update_display(self.current_text)
@@ -308,7 +321,8 @@ class LiveMultiLanguageVoskRecognition:
 
 def run_multilang_vosk_recognition(
     model_paths: Optional[Dict[str, str]] = None,
-    mode: str = "best"
+    mode: str = "best",
+    enable_chatgpt: bool = False,
 ):
     """Hauptfunktion für mehrsprachige Live-Spracherkennung."""
     import os
@@ -351,11 +365,24 @@ def run_multilang_vosk_recognition(
         print(f"OLED-Fehler: {e}. Fortfahren ohne Display.")
         oled = None
     
+    # ChatGPT-Assistent (optional)
+    chat_assistant = None
+    if enable_chatgpt:
+        from openai import OpenAI
+        client = OpenAI(api_key=settings.openai_api_key)
+        chat_assistant = ChatAssistant(
+            client=client,
+            model_chat=settings.model_chat,
+            model_tts=settings.model_tts,
+            tts_voice=settings.tts_voice,
+        )
+
     # Live-Spracherkennung starten
     recognizer = LiveMultiLanguageVoskRecognition(
         model_paths=model_paths,
         device=settings.audio_input_device,
-        mode=mode
+        mode=mode,
+        chat_assistant=chat_assistant,
     )
     
     recognizer.start(oled=oled)

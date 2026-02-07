@@ -13,13 +13,15 @@ from .config import load_settings
 from .audio_io import _resolve_device_id, select_input_device
 from .oled_display import OledDisplay
 from .sentence_detection import SemanticSpeechRecognition
+from .chat_assistant import ChatAssistant
 
 
 class LiveSpeechRecognition:
     """Live Spracherkennung mit Laufband-Anzeige auf OLED-Display."""
     
     def __init__(self, client: OpenAI, model_stt: str, device: Optional[str | int] = None,
-                 enable_semantic: bool = True, language: str = "de"):
+                 enable_semantic: bool = True, language: str = "de",
+                 chat_assistant: Optional[ChatAssistant] = None):
         self.client = client
         self.model_stt = model_stt
         self.device_spec = device
@@ -32,6 +34,8 @@ class LiveSpeechRecognition:
         self.text_callback: Optional[Callable[[str], None]] = None
         self.enable_semantic = enable_semantic
         self.semantic_processor = SemanticSpeechRecognition(language=language) if enable_semantic else None
+        self.chat_assistant = chat_assistant
+        self._last_chat_text: Optional[str] = None
         
     def set_text_callback(self, callback: Callable[[str], None]) -> None:
         """Setze Callback-Funktion, die bei neuem Text aufgerufen wird."""
@@ -156,6 +160,12 @@ class LiveSpeechRecognition:
                         self._update_display(display_text)
                     else:
                         self._update_display(self.current_text)
+
+                    # Neue vollständige Sätze an ChatGPT senden
+                    if self.chat_assistant:
+                        for sentence in result.get("new_sentences", []):
+                            if sentence and sentence.text:
+                                self.chat_assistant.handle_text(sentence.text)
                 else:
                     # Standard: Einfache Text-Anzeige (ohne Korrektur)
                     if self.current_text:
@@ -163,6 +173,12 @@ class LiveSpeechRecognition:
                     else:
                         self.current_text = text
                     self._update_display(self.current_text)
+
+                    # Fallback: gesamten Text senden (ohne Semantik)
+                    if self.chat_assistant:
+                        if self._last_chat_text != text:
+                            self._last_chat_text = text
+                            self.chat_assistant.handle_text(text)
                 
                 # Callback aufrufen
                 if self.text_callback:
@@ -217,7 +233,7 @@ class LiveSpeechRecognition:
         print("Spracherkennung gestoppt.")
 
 
-def run_live_recognition():
+def run_live_recognition(enable_chatgpt: bool = False):
     """Hauptfunktion für Live-Spracherkennung."""
     import sys
     
@@ -238,11 +254,22 @@ def run_live_recognition():
         print(f"OLED-Fehler: {e}. Fortfahren ohne Display.")
         oled = None
     
+    # ChatGPT-Assistent (optional)
+    chat_assistant = None
+    if enable_chatgpt:
+        chat_assistant = ChatAssistant(
+            client=client,
+            model_chat=settings.model_chat,
+            model_tts=settings.model_tts,
+            tts_voice=settings.tts_voice,
+        )
+
     # Live-Spracherkennung starten
     recognizer = LiveSpeechRecognition(
         client=client,
         model_stt=settings.model_stt,
-        device=settings.audio_input_device
+        device=settings.audio_input_device,
+        chat_assistant=chat_assistant,
     )
     
     recognizer.start(oled=oled)

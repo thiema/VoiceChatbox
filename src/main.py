@@ -118,12 +118,13 @@ def main():
     if "--live-recognition" in sys.argv or "--live-stt" in sys.argv:
         # Prüfe, ob Push-to-Talk verwendet werden soll
         use_ptt = "--ptt" in sys.argv or os.getenv("USE_PTT", "").lower() in ("1", "true", "yes")
+        use_chatgpt = "--chatgpt" in sys.argv or os.getenv("USE_CHATGPT", "").lower() in ("1", "true", "yes")
         
         if use_ptt:
             # Push-to-Talk Modus (mit Taster)
             from .speech_recognition_ptt import run_ptt_live_recognition
             use_vosk = "--vosk" in sys.argv or os.getenv("USE_VOSK", "").lower() in ("1", "true", "yes")
-            run_ptt_live_recognition(use_vosk=use_vosk)
+            run_ptt_live_recognition(use_vosk=use_vosk, enable_chatgpt=use_chatgpt)
         else:
             # Kontinuierliche Aufnahme (ohne Taster)
             use_vosk = "--vosk" in sys.argv or os.getenv("USE_VOSK", "").lower() in ("1", "true", "yes")
@@ -142,7 +143,8 @@ def main():
                     run_smart_multilang_recognition(
                         model_path_de=model_path_de,
                         model_path_en=model_path_en,
-                        device=settings.audio_input_device
+                        device=settings.audio_input_device,
+                        enable_chatgpt=use_chatgpt,
                     )
                 else:
                     # Prüfe, ob mehrsprachig verwendet werden soll
@@ -164,15 +166,19 @@ def main():
                         elif "--all" in sys.argv:
                             mode = "all"
                         
-                        run_multilang_vosk_recognition(model_paths=model_paths if model_paths else None, mode=mode)
+                        run_multilang_vosk_recognition(
+                            model_paths=model_paths if model_paths else None,
+                            mode=mode,
+                            enable_chatgpt=use_chatgpt,
+                        )
                     else:
                         from .speech_recognition_vosk import run_live_vosk_recognition
                         settings = load_settings()
                         model_path = settings.vosk_model_path or "models/vosk-model-de-0.22"
-                        run_live_vosk_recognition(model_path)
+                        run_live_vosk_recognition(model_path, enable_chatgpt=use_chatgpt)
             else:
                 from .speech_recognition_live import run_live_recognition
-                run_live_recognition()
+                run_live_recognition(enable_chatgpt=use_chatgpt)
         return
 
     forced_mode = None

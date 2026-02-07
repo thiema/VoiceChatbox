@@ -13,6 +13,7 @@ from .oled_display import OledDisplay
 from .gpio_inputs import PushToTalk
 from .led_status import LedStatus, Status
 from .sentence_detection import SemanticSpeechRecognition
+from .chat_assistant import ChatAssistant
 
 
 class PTTLiveRecognition:
@@ -20,7 +21,8 @@ class PTTLiveRecognition:
     
     def __init__(self, client: OpenAI, model_stt: str, ptt: PushToTalk, 
                  leds: Optional[LedStatus] = None, device: Optional[str | int] = None,
-                 enable_semantic: bool = True, language: str = "de"):
+                 enable_semantic: bool = True, language: str = "de",
+                 chat_assistant: Optional[ChatAssistant] = None):
         self.client = client
         self.model_stt = model_stt
         self.ptt = ptt
@@ -33,6 +35,8 @@ class PTTLiveRecognition:
         self.text_callback: Optional[Callable[[str], None]] = None
         self.enable_semantic = enable_semantic
         self.semantic_processor = SemanticSpeechRecognition(language=language) if enable_semantic else None
+        self.chat_assistant = chat_assistant
+        self._last_chat_text: Optional[str] = None
     
     def set_text_callback(self, callback: Callable[[str], None]) -> None:
         """Setze Callback-Funktion, die bei neuem Text aufgerufen wird."""
@@ -127,6 +131,7 @@ class PTTLiveRecognition:
                 text = self._transcribe_audio(wav_bytes)
                 
                 if text:
+                    prev_text = self.current_text
                     # Semantische Satzerkennung mit kontext-basierter Korrektur
                     if hasattr(self, 'semantic_processor') and self.semantic_processor:
                         # Text temporär hinzufügen für Verarbeitung
@@ -179,6 +184,19 @@ class PTTLiveRecognition:
                             self.current_text = text
                         self._update_display(self.current_text)
                     
+                    # ChatGPT: erst nach Loslassen senden (einmal pro Aufnahme)
+                    if self.chat_assistant:
+                        send_text = text
+                        if self.semantic_processor:
+                            corrected = self.current_text or text
+                            if prev_text and corrected.startswith(prev_text):
+                                send_text = corrected[len(prev_text):].strip() or text
+                            else:
+                                send_text = corrected
+                        if self._last_chat_text != send_text:
+                            self._last_chat_text = send_text
+                            self.chat_assistant.handle_text(send_text)
+                    
                     # Callback aufrufen
                     if self.text_callback:
                         self.text_callback(self.current_text)
@@ -216,7 +234,8 @@ class PTTLiveVoskRecognition:
     
     def __init__(self, vosk_recognizer, ptt: PushToTalk, 
                  leds: Optional[LedStatus] = None,
-                 enable_semantic: bool = True, language: str = "de"):
+                 enable_semantic: bool = True, language: str = "de",
+                 chat_assistant: Optional[ChatAssistant] = None):
         from .speech_recognition_vosk import VoskSpeechRecognition
         self.vosk = vosk_recognizer
         self.ptt = ptt
@@ -228,6 +247,8 @@ class PTTLiveVoskRecognition:
         self.text_callback: Optional[Callable[[str], None]] = None
         self.enable_semantic = enable_semantic
         self.semantic_processor = SemanticSpeechRecognition(language=language) if enable_semantic else None
+        self.chat_assistant = chat_assistant
+        self._last_chat_text: Optional[str] = None
     
     def set_text_callback(self, callback: Callable[[str], None]) -> None:
         """Setze Callback-Funktion, die bei neuem Text aufgerufen wird."""
@@ -297,6 +318,7 @@ class PTTLiveVoskRecognition:
                 text = self.vosk.transcribe_audio(wav_bytes)
                 
                 if text:
+                    prev_text = self.current_text
                     # Semantische Satzerkennung mit kontext-basierter Korrektur
                     if hasattr(self, 'semantic_processor') and self.semantic_processor:
                         # Text temporär hinzufügen für Verarbeitung
@@ -349,6 +371,19 @@ class PTTLiveVoskRecognition:
                             self.current_text = text
                         self._update_display(self.current_text)
                     
+                    # ChatGPT: erst nach Loslassen senden (einmal pro Aufnahme)
+                    if self.chat_assistant:
+                        send_text = text
+                        if self.semantic_processor:
+                            corrected = self.current_text or text
+                            if prev_text and corrected.startswith(prev_text):
+                                send_text = corrected[len(prev_text):].strip() or text
+                            else:
+                                send_text = corrected
+                        if self._last_chat_text != send_text:
+                            self._last_chat_text = send_text
+                            self.chat_assistant.handle_text(send_text)
+                    
                     # Callback aufrufen
                     if self.text_callback:
                         self.text_callback(self.current_text)
@@ -381,7 +416,7 @@ class PTTLiveVoskRecognition:
         print("Spracherkennung gestoppt.")
 
 
-def run_ptt_live_recognition(use_vosk: bool = False):
+def run_ptt_live_recognition(use_vosk: bool = False, enable_chatgpt: bool = False):
     """Hauptfunktion für Push-to-Talk Live-Spracherkennung."""
     import os
     
@@ -415,6 +450,17 @@ def run_ptt_live_recognition(use_vosk: bool = False):
         print(f"OLED-Fehler: {e}. Fortfahren ohne Display.")
         oled = None
     
+    # ChatGPT-Assistent (optional)
+    chat_assistant = None
+    if enable_chatgpt:
+        client = OpenAI(api_key=settings.openai_api_key)
+        chat_assistant = ChatAssistant(
+            client=client,
+            model_chat=settings.model_chat,
+            model_tts=settings.model_tts,
+            tts_voice=settings.tts_voice,
+        )
+
     if use_vosk:
         # Prüfe, ob mehrsprachig verwendet werden soll
         use_multilang = os.getenv("USE_MULTILANG", "").lower() in ("1", "true", "yes")
@@ -437,7 +483,7 @@ def run_ptt_live_recognition(use_vosk: bool = False):
             
             # Erstelle Wrapper für PTT
             class PTTMultiLangVoskRecognition:
-                def __init__(self, multilang_vosk, ptt, leds):
+                def __init__(self, multilang_vosk, ptt, leds, chat_assistant=None):
                     self.multilang_vosk = multilang_vosk
                     self.ptt = ptt
                     self.leds = leds
@@ -446,6 +492,8 @@ def run_ptt_live_recognition(use_vosk: bool = False):
                     self.current_text = ""
                     self.oled = None
                     self.mode = "best"
+                    self.chat_assistant = chat_assistant
+                    self._last_chat_text = None
                 
                 def start(self, oled=None):
                     self.oled = oled
@@ -511,6 +559,11 @@ def run_ptt_live_recognition(use_vosk: bool = False):
                                 print(f"✅ [{lang.upper()}] {text}")
                                 print(f"📝 Gesamt: {self.current_text}")
                                 print()
+
+                                # ChatGPT: erst nach Loslassen senden (einmal pro Aufnahme)
+                                if self.chat_assistant and self._last_chat_text != text:
+                                    self._last_chat_text = text
+                                    self.chat_assistant.handle_text(text)
                             
                             if self.leds:
                                 self.leds.set(Status.IDLE)
@@ -529,7 +582,7 @@ def run_ptt_live_recognition(use_vosk: bool = False):
                     if self.oled:
                         self.oled.clear()
             
-            recognizer = PTTMultiLangVoskRecognition(multilang_vosk, ptt, leds)
+            recognizer = PTTMultiLangVoskRecognition(multilang_vosk, ptt, leds, chat_assistant)
             recognizer.start(oled=oled)
         else:
             # Einsprachige Vosk-Erkennung
@@ -538,7 +591,7 @@ def run_ptt_live_recognition(use_vosk: bool = False):
             model_path = settings.vosk_model_path or os.getenv("VOSK_MODEL_PATH", "models/vosk-model-de-0.22")
             vosk = VoskSpeechRecognition(model_path, device=settings.audio_input_device)
             
-            recognizer = PTTLiveVoskRecognition(vosk, ptt, leds)
+            recognizer = PTTLiveVoskRecognition(vosk, ptt, leds, chat_assistant=chat_assistant)
             recognizer.start(oled=oled)
     else:
         # OpenAI (Cloud)
@@ -549,7 +602,8 @@ def run_ptt_live_recognition(use_vosk: bool = False):
             model_stt=settings.model_stt,
             ptt=ptt,
             leds=leds,
-            device=settings.audio_input_device
+            device=settings.audio_input_device,
+            chat_assistant=chat_assistant,
         )
         recognizer.start(oled=oled)
 

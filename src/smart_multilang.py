@@ -9,6 +9,7 @@ from typing import Callable, Optional, Dict, List, Tuple
 from pathlib import Path
 
 from .audio_io import _resolve_device_id, select_input_device
+from .chat_assistant import ChatAssistant
 from .oled_display import OledDisplay
 from .sentence_detection import SemanticSpeechRecognition
 
@@ -23,7 +24,8 @@ class SmartMultiLanguageVoskRecognition:
     def __init__(self, model_path_de: str, model_path_en: Optional[str] = None,
                  device: Optional[str | int] = None,
                  chunk_duration: float = 3.0, enable_audio_processing: bool = True,
-                 enable_semantic: bool = True):
+                 enable_semantic: bool = True,
+                 chat_assistant: Optional[ChatAssistant] = None):
         """
         Initialisiere intelligente mehrsprachige Spracherkennung.
         
@@ -43,6 +45,8 @@ class SmartMultiLanguageVoskRecognition:
         self.chunk_duration = chunk_duration
         self.enable_audio_processing = enable_audio_processing
         self.enable_semantic = enable_semantic
+        self.chat_assistant = chat_assistant
+        self._last_chat_text: Optional[str] = None
         
         # Englische Wörter, die im deutschen Kontext verwendet werden
         self.english_words = {
@@ -374,9 +378,19 @@ class SmartMultiLanguageVoskRecognition:
                         self._update_display(display_text)
                     else:
                         self._update_display(self.current_text)
+
+                    # Neue vollständige Sätze an ChatGPT senden
+                    if self.chat_assistant:
+                        for sentence in result.get("new_sentences", []):
+                            if sentence and sentence.text:
+                                self.chat_assistant.handle_text(sentence.text)
                 else:
                     # Standard: Einfache Text-Anzeige
                     self._update_display(self.current_text)
+
+                    if self.chat_assistant and self._last_chat_text != text:
+                        self._last_chat_text = text
+                        self.chat_assistant.handle_text(text)
                 
                 # Callback aufrufen
                 if self.text_callback:
@@ -433,16 +447,35 @@ class SmartMultiLanguageVoskRecognition:
         self.text_callback = callback
 
 
-def run_smart_multilang_recognition(model_path_de: str, model_path_en: Optional[str] = None,
-                                    device: Optional[str | int] = None):
+def run_smart_multilang_recognition(
+    model_path_de: str,
+    model_path_en: Optional[str] = None,
+    device: Optional[str | int] = None,
+    enable_chatgpt: bool = False,
+):
     """Hauptfunktion für intelligente mehrsprachige Spracherkennung."""
     import time
     
+    # ChatGPT-Assistent (optional)
+    chat_assistant = None
+    if enable_chatgpt:
+        from openai import OpenAI
+        from .config import load_settings
+        settings = load_settings()
+        client = OpenAI(api_key=settings.openai_api_key)
+        chat_assistant = ChatAssistant(
+            client=client,
+            model_chat=settings.model_chat,
+            model_tts=settings.model_tts,
+            tts_voice=settings.tts_voice,
+        )
+
     # Initialisiere Erkennung
     recognizer = SmartMultiLanguageVoskRecognition(
         model_path_de=model_path_de,
         model_path_en=model_path_en,
-        device=device
+        device=device,
+        chat_assistant=chat_assistant,
     )
     
     # OLED initialisieren

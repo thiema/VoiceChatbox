@@ -70,10 +70,12 @@ raspi-ai-chatbox-de/
 # Kontinuierliche Aufnahme (ohne Taster)
 python -m src.main --live-recognition
 python -m src.main --live-recognition --vosk  # Mit Vosk
+python -m src.main --live-recognition --chatgpt  # Sendet an ChatGPT + TTS
 
 # Push-to-Talk (mit Taster)
 python -m src.main --live-recognition --ptt
 python -m src.main --live-recognition --ptt --vosk  # Mit Vosk
+python -m src.main --live-recognition --ptt --chatgpt  # ChatGPT + TTS
 
 # Intelligente mehrsprachige Erkennung (DE primär, EN nur für bestimmte Wörter) - NEU!
 python -m src.main --live-recognition --vosk --smart-multilang
