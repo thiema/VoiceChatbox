@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+import sys
 from dataclasses import dataclass
 from typing import Optional
 from PIL import Image
@@ -69,6 +70,7 @@ class OledDisplay:
         self.cfg = cfg or load_oled_config()
         self.device = None
         self.font = None
+        self._last_terminal_text: str | None = None
 
     def init(self) -> bool:
         try:
@@ -191,6 +193,7 @@ class OledDisplay:
         Wenn Text zu lang ist, wird er abgeschnitten mit "..." am Ende.
         Für Live-Spracherkennung: zeigt den neuesten Text-Abschnitt.
         """
+        self._mirror_to_terminal(text)
         if not self.device or not self.font:
             return
         
@@ -225,3 +228,12 @@ class OledDisplay:
             display_text = text
         
         self.show_box_and_text(display_text)
+
+    def _mirror_to_terminal(self, text: str) -> None:
+        """Spiegle OLED-Text ins Terminal (nur bei Änderung)."""
+        if not text:
+            return
+        if self._last_terminal_text == text:
+            return
+        self._last_terminal_text = text
+        print(f"OLED: {text}", file=sys.stdout)
