@@ -189,16 +189,21 @@ class LiveSpeechRecognition:
         print("Sprich jetzt...")
         
         try:
-            # Initialisiere Audio-Stream
-            with sd.InputStream(
-                device=self.device_id,
-                samplerate=self.samplerate,
-                channels=1,
-                dtype="int16"
-            ):
-                # Kontinuierliche Verarbeitung
-                while self.is_running:
-                    self._process_chunk()
+            # Prüfe, ob das Eingabegerät verfügbar ist
+            try:
+                sd.check_input_settings(
+                    device=self.device_id,
+                    samplerate=self.samplerate,
+                    channels=1,
+                    dtype="int16"
+                )
+            except sd.PortAudioError as e:
+                print(f"Audio-Fehler: {e}")
+                return
+
+            # Kontinuierliche Verarbeitung
+            while self.is_running:
+                self._process_chunk()
         except KeyboardInterrupt:
             print("\nBeendet.")
         finally:
