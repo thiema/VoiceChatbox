@@ -2,6 +2,7 @@ from __future__ import annotations
 import io
 import wave
 import json
+import re
 import numpy as np
 import sounddevice as sd
 from typing import Callable, Optional
