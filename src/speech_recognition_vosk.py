@@ -9,6 +9,7 @@ from pathlib import Path
 
 from .audio_io import _resolve_device_id, select_input_device
 from .oled_display import OledDisplay
+from .sentence_detection import SemanticSpeechRecognition
 
 
 class VoskSpeechRecognition:
