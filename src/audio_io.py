@@ -7,6 +7,18 @@ import re
 import numpy as np
 import sounddevice as sd
 
+def _get_input_devices() -> list[tuple[int, dict]]:
+    """Return list of (device_id, device_info) for input-capable devices."""
+    try:
+        devices = sd.query_devices()
+        return [
+            (i, d)
+            for i, d in enumerate(devices)
+            if d.get("max_input_channels", 0) > 0
+        ]
+    except Exception:
+        return []
+
 def _resolve_device_id(device_spec: str | int | None) -> int | None:
     """Resolve device specification (name or ID) to device ID.
 
@@ -62,23 +74,28 @@ def _resolve_device_id(device_spec: str | int | None) -> int | None:
         if all(token in name for token in tokens_lower):
             return i
     
-    # Not found, return None (will use default)
+    # Not found, return None (caller may fallback)
     return None
 
 def _print_input_devices() -> None:
     """Print available input devices for troubleshooting."""
-    try:
-        devices = sd.query_devices()
-        input_devices = [
-            f"{i}: {d['name']} (in={d['max_input_channels']})"
-            for i, d in enumerate(devices)
-            if d.get("max_input_channels", 0) > 0
-        ]
-        print("Verfügbare Input-Geräte:", file=sys.stderr)
-        for line in input_devices:
-            print(f"  {line}", file=sys.stderr)
-    except Exception:
-        pass
+    input_devices = _get_input_devices()
+    if not input_devices:
+        return
+    print("Verfügbare Input-Geräte:", file=sys.stderr)
+    for i, d in input_devices:
+        print(f"  {i}: {d['name']} (in={d['max_input_channels']})", file=sys.stderr)
+
+def _select_input_device(device_spec: str | int | None) -> int | None:
+    """Select input device. Falls back to first available if spec not found."""
+    device_id = _resolve_device_id(device_spec)
+    if device_id is not None:
+        return device_id
+    input_devices = _get_input_devices()
+    if input_devices:
+        fallback_id, _ = input_devices[0]
+        return fallback_id
+    return None
 
 def record_while_pressed(is_pressed_fn, samplerate: int = 16000, device: str | int | None = None) -> bytes:
     """
@@ -93,7 +110,15 @@ def record_while_pressed(is_pressed_fn, samplerate: int = 16000, device: str | i
     dtype = "int16"
     frames = []
     
-    device_id = _resolve_device_id(device)
+    # Liste Geräte und zeige gewähltes Device
+    _print_input_devices()
+    device_id = _select_input_device(device)
+    if device_id is not None:
+        try:
+            dev_info = sd.query_devices(device_id)
+            print(f"Verwendetes Input-Gerät: {dev_info['name']} (ID: {device_id})", file=sys.stderr)
+        except Exception:
+            pass
     
     # Verwende InputStream mit Callback statt sd.rec() um Konflikte zu vermeiden
     def callback(indata, frames_count, time_info, status):
