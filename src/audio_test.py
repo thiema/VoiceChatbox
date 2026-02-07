@@ -2,6 +2,8 @@ from __future__ import annotations
 import sys
 import time
 import sounddevice as sd
+
+from .audio_io import _resolve_device_id
 import numpy as np
 from .config import load_settings
 
@@ -203,29 +205,10 @@ def run_audio_test():
             output_id = None
             
             if settings.audio_input_device:
-                # Versuche Gerätename oder ID zu finden
-                devices = sd.query_devices()
-                for i, dev in enumerate(devices):
-                    if settings.audio_input_device.lower() in dev['name'].lower():
-                        input_id = i
-                        break
-                if input_id is None:
-                    try:
-                        input_id = int(settings.audio_input_device)
-                    except ValueError:
-                        pass
+                input_id = _resolve_device_id(settings.audio_input_device)
             
             if settings.audio_output_device:
-                devices = sd.query_devices()
-                for i, dev in enumerate(devices):
-                    if settings.audio_output_device.lower() in dev['name'].lower():
-                        output_id = i
-                        break
-                if output_id is None:
-                    try:
-                        output_id = int(settings.audio_output_device)
-                    except ValueError:
-                        pass
+                output_id = _resolve_device_id(settings.audio_output_device)
             
             print("=== Vollständiger Audio-Test ===")
             print(f"Konfiguration aus .env:")

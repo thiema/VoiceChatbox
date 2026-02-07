@@ -1,12 +1,21 @@
 from __future__ import annotations
 import io
 import sys
+import time
 import wave
+import re
 import numpy as np
 import sounddevice as sd
 
 def _resolve_device_id(device_spec: str | int | None) -> int | None:
-    """Resolve device specification (name or ID) to device ID."""
+    """Resolve device specification (name or ID) to device ID.
+
+    Supports:
+    - int or numeric string (device ID)
+    - partial name match
+    - composite match using "token1|token2" (all tokens must match)
+    - key-value match like "card=...;device=..." or "card=... , device=..."
+    """
     if device_spec is None:
         return None
     
@@ -20,15 +29,56 @@ def _resolve_device_id(device_spec: str | int | None) -> int | None:
     except ValueError:
         pass
     
-    # Search by name (case-insensitive partial match)
+    spec = str(device_spec).strip()
+    tokens: list[str] = []
+    
+    # Parse key-value spec: card=...;device=...
+    if "card=" in spec.lower() or "device=" in spec.lower():
+        parts = re.split(r"[;,]", spec)
+        kv = {}
+        for part in parts:
+            if "=" in part:
+                k, v = part.split("=", 1)
+                kv[k.strip().lower()] = v.strip()
+        card = kv.get("card")
+        device = kv.get("device")
+        if card:
+            tokens.append(card)
+        if device:
+            tokens.append(device)
+        # If numeric card/device are provided, add hw:card,device token
+        if card and device and card.isdigit() and device.isdigit():
+            tokens.append(f"hw:{card},{device}")
+    elif "|" in spec:
+        tokens = [t.strip() for t in spec.split("|") if t.strip()]
+    else:
+        tokens = [spec]
+    
+    # Search by name (case-insensitive partial match for all tokens)
     devices = sd.query_devices()
-    device_spec_lower = device_spec.lower()
+    tokens_lower = [t.lower() for t in tokens if t]
     for i, device in enumerate(devices):
-        if device_spec_lower in device['name'].lower():
+        name = device.get('name', '').lower()
+        if all(token in name for token in tokens_lower):
             return i
     
     # Not found, return None (will use default)
     return None
+
+def _print_input_devices() -> None:
+    """Print available input devices for troubleshooting."""
+    try:
+        devices = sd.query_devices()
+        input_devices = [
+            f"{i}: {d['name']} (in={d['max_input_channels']})"
+            for i, d in enumerate(devices)
+            if d.get("max_input_channels", 0) > 0
+        ]
+        print("Verfügbare Input-Geräte:", file=sys.stderr)
+        for line in input_devices:
+            print(f"  {line}", file=sys.stderr)
+    except Exception:
+        pass
 
 def record_while_pressed(is_pressed_fn, samplerate: int = 16000, device: str | int | None = None) -> bytes:
     """
@@ -51,18 +101,32 @@ def record_while_pressed(is_pressed_fn, samplerate: int = 16000, device: str | i
             print(f"Audio-Status: {status}", file=sys.stderr)
         frames.append(indata.copy())
     
-    # Erstelle InputStream und starte Aufnahme
-    stream = sd.InputStream(
-        device=device_id,
-        samplerate=samplerate,
-        channels=channels,
-        dtype=dtype,
-        callback=callback,
-        blocksize=int(samplerate * 0.1)  # 0.1 Sekunden Blöcke
-    )
+    def _open_stream(selected_device: int | None):
+        return sd.InputStream(
+            device=selected_device,
+            samplerate=samplerate,
+            channels=channels,
+            dtype=dtype,
+            callback=callback,
+            blocksize=int(samplerate * 0.1)  # 0.1 Sekunden Blöcke
+        )
     
+    stream = None
     try:
-        stream.start()
+        try:
+            stream = _open_stream(device_id)
+            stream.start()
+        except sd.PortAudioError as e:
+            print(f"Audio-Fehler beim Öffnen InputStream (device={device_id}): {e}", file=sys.stderr)
+            if device_id is not None:
+                # Fallback auf Standardgerät
+                print("Versuche Standardgerät...", file=sys.stderr)
+                time.sleep(0.1)
+                stream = _open_stream(None)
+                stream.start()
+            else:
+                _print_input_devices()
+                raise
         
         # Warte während Taster gedrückt ist
         while is_pressed_fn():
@@ -71,9 +135,13 @@ def record_while_pressed(is_pressed_fn, samplerate: int = 16000, device: str | i
         # Kurze Pause um letzten Block zu erfassen
         sd.sleep(100)
         
+    except sd.PortAudioError:
+        _print_input_devices()
+        raise
     finally:
-        stream.stop()
-        stream.close()
+        if stream is not None:
+            stream.stop()
+            stream.close()
     
     # Konkateniere alle Frames
     if frames:
