@@ -7,7 +7,7 @@ import sounddevice as sd
 from typing import Callable, Optional, Dict, List, Tuple
 from pathlib import Path
 
-from .audio_io import _resolve_device_id
+from .audio_io import _resolve_device_id, select_input_device
 from .oled_display import OledDisplay
 
 
@@ -24,6 +24,7 @@ class MultiLanguageVoskRecognition:
             device: Audio-Eingabegerät
         """
         self.model_paths = {lang: Path(path) for lang, path in model_paths.items()}
+        self.device_spec = device
         self.device_id = _resolve_device_id(device)
         self.samplerate = 16000
         self.models: Dict[str, any] = {}
@@ -273,6 +274,9 @@ class LiveMultiLanguageVoskRecognition:
         self.oled = oled
         self.is_running = True
         self.current_text = ""
+
+        # Geräteauswahl anzeigen + Fallback
+        self.vosk.device_id = select_input_device(self.vosk.device_spec, announce=True)
         
         if self.oled:
             self.oled.show_listening()

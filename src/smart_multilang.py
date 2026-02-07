@@ -8,7 +8,7 @@ import sounddevice as sd
 from typing import Callable, Optional, Dict, List, Tuple
 from pathlib import Path
 
-from .audio_io import _resolve_device_id
+from .audio_io import _resolve_device_id, select_input_device
 from .oled_display import OledDisplay
 from .sentence_detection import SemanticSpeechRecognition
 
@@ -37,6 +37,7 @@ class SmartMultiLanguageVoskRecognition:
         """
         self.model_path_de = Path(model_path_de)
         self.model_path_en = Path(model_path_en) if model_path_en else None
+        self.device_spec = device
         self.device_id = _resolve_device_id(device)
         self.samplerate = 16000
         self.chunk_duration = chunk_duration
@@ -395,6 +396,9 @@ class SmartMultiLanguageVoskRecognition:
         self.is_running = True
         self.current_text = ""
         self.last_processed_length = 0
+
+        # Geräteauswahl anzeigen + Fallback
+        self.device_id = select_input_device(self.device_spec, announce=True)
         
         if self.oled:
             self.oled.show_listening()

@@ -7,7 +7,7 @@ import sounddevice as sd
 from typing import Callable, Optional
 from pathlib import Path
 
-from .audio_io import _resolve_device_id
+from .audio_io import _resolve_device_id, select_input_device
 from .oled_display import OledDisplay
 
 
@@ -23,6 +23,7 @@ class VoskSpeechRecognition:
             device: Audio-Eingabegerät (ID, Name oder None für Standard)
         """
         self.model_path = Path(model_path)
+        self.device_spec = device
         self.device_id = _resolve_device_id(device)
         self.samplerate = 16000
         self.recognizer = None
@@ -353,6 +354,9 @@ class LiveVoskRecognition:
         self.oled = oled
         self.is_running = True
         self.current_text = ""
+
+        # Geräteauswahl anzeigen + Fallback
+        self.vosk.device_id = select_input_device(self.vosk.device_spec, announce=True)
         
         if self.oled:
             self.oled.show_listening()

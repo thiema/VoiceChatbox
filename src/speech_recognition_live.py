@@ -10,7 +10,7 @@ from typing import Callable, Optional
 from openai import OpenAI
 
 from .config import load_settings
-from .audio_io import _resolve_device_id
+from .audio_io import _resolve_device_id, select_input_device
 from .oled_display import OledDisplay
 from .sentence_detection import SemanticSpeechRecognition
 
@@ -22,6 +22,7 @@ class LiveSpeechRecognition:
                  enable_semantic: bool = True, language: str = "de"):
         self.client = client
         self.model_stt = model_stt
+        self.device_spec = device
         self.device_id = _resolve_device_id(device)
         self.samplerate = 16000
         self.chunk_duration = 2.0  # Sekunden pro Chunk
@@ -181,6 +182,9 @@ class LiveSpeechRecognition:
         if self.oled:
             self.oled.show_listening()
         
+        # Geräteauswahl anzeigen + Fallback
+        self.device_id = select_input_device(self.device_spec, announce=True)
+
         print("Live-Spracherkennung gestartet. Strg+C zum Beenden.")
         print("Sprich jetzt...")
         

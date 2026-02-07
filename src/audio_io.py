@@ -86,16 +86,32 @@ def _print_input_devices() -> None:
     for i, d in input_devices:
         print(f"  {i}: {d['name']} (in={d['max_input_channels']})", file=sys.stderr)
 
-def _select_input_device(device_spec: str | int | None) -> int | None:
-    """Select input device. Falls back to first available if spec not found."""
+def select_input_device(device_spec: str | int | None, announce: bool = True) -> int | None:
+    """Select input device; optionally announce list and selection.
+
+    Falls back to first available input device if spec not found.
+    """
+    if announce:
+        _print_input_devices()
     device_id = _resolve_device_id(device_spec)
-    if device_id is not None:
-        return device_id
-    input_devices = _get_input_devices()
-    if input_devices:
-        fallback_id, _ = input_devices[0]
-        return fallback_id
-    return None
+    if device_id is None:
+        input_devices = _get_input_devices()
+        if input_devices:
+            fallback_id, _ = input_devices[0]
+            if announce and device_spec:
+                print(
+                    f"⚠️  Eingabegerät '{device_spec}' nicht gefunden. "
+                    f"Fallback auf erstes verfügbares Gerät (ID: {fallback_id}).",
+                    file=sys.stderr
+                )
+            device_id = fallback_id
+    if announce and device_id is not None:
+        try:
+            dev_info = sd.query_devices(device_id)
+            print(f"Verwendetes Input-Gerät: {dev_info['name']} (ID: {device_id})", file=sys.stderr)
+        except Exception:
+            pass
+    return device_id
 
 def record_while_pressed(is_pressed_fn, samplerate: int = 16000, device: str | int | None = None) -> bytes:
     """
@@ -111,14 +127,7 @@ def record_while_pressed(is_pressed_fn, samplerate: int = 16000, device: str | i
     frames = []
     
     # Liste Geräte und zeige gewähltes Device
-    _print_input_devices()
-    device_id = _select_input_device(device)
-    if device_id is not None:
-        try:
-            dev_info = sd.query_devices(device_id)
-            print(f"Verwendetes Input-Gerät: {dev_info['name']} (ID: {device_id})", file=sys.stderr)
-        except Exception:
-            pass
+    device_id = select_input_device(device, announce=True)
     
     # Verwende InputStream mit Callback statt sd.rec() um Konflikte zu vermeiden
     def callback(indata, frames_count, time_info, status):
