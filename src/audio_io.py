@@ -232,7 +232,16 @@ def play_wav_bytes(wav_bytes: bytes, device: str | int | None = None, announce: 
         audio = np.column_stack([audio, audio])
 
     sd.play(audio, samplerate=target_sr, device=device_id)
-    sd.wait()
+    expected_sec = max(len(audio) / float(target_sr), 0.1)
+    deadline = time.time() + expected_sec + 2.0
+    while True:
+        stream = sd.get_stream()
+        if stream is None or not stream.active:
+            break
+        if time.time() > deadline:
+            sd.stop()
+            break
+        time.sleep(0.05)
 
 def record_while_pressed(is_pressed_fn, samplerate: int = 16000, device: str | int | None = None) -> bytes:
     """
