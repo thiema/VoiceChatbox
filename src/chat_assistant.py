@@ -1,12 +1,11 @@
 from __future__ import annotations
 
-import os
 import threading
-import tempfile
 from typing import Optional
 
 from openai import OpenAI
 
+from .audio_io import play_wav_bytes
 
 class ChatAssistant:
     """Send text to ChatGPT and play back the response with TTS."""
@@ -17,12 +16,16 @@ class ChatAssistant:
         model_chat: str,
         model_tts: str,
         tts_voice: str,
+        audio_output_device: str | int | None = None,
+        announce_output: bool = True,
         system_prompt: str = "Du bist ein hilfreicher, knapper Sprachassistent.",
     ) -> None:
         self.client = client
         self.model_chat = model_chat
         self.model_tts = model_tts
         self.tts_voice = tts_voice
+        self.audio_output_device = audio_output_device
+        self._announce_output = announce_output
         self.system_prompt = system_prompt
         self._inflight = False
         self._last_text: Optional[str] = None
@@ -70,18 +73,9 @@ class ChatAssistant:
             model=self.model_tts,
             voice=self.tts_voice,
             input=text,
+            response_format="wav",
         )
-        mp3_path = self._bytes_to_tempfile(speech.read(), ".mp3")
-        os.system(f'ffplay -autoexit -nodisp -loglevel quiet "{mp3_path}"')
-        try:
-            os.remove(mp3_path)
-        except OSError:
-            pass
-
-    @staticmethod
-    def _bytes_to_tempfile(data: bytes, suffix: str) -> str:
-        fd, path = tempfile.mkstemp(suffix=suffix)
-        os.close(fd)
-        with open(path, "wb") as f:
-            f.write(data)
-        return path
+        wav_bytes = speech.read()
+        announce = self._announce_output
+        self._announce_output = False
+        play_wav_bytes(wav_bytes, device=self.audio_output_device, announce=announce)

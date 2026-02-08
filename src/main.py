@@ -1,30 +1,29 @@
 from __future__ import annotations
 import os
 import sys
-import tempfile
 from time import sleep
 from openai import OpenAI
 
 from .config import load_settings
 from .gpio_inputs import PushToTalk
 from .led_status import LedStatus, Status
-from .audio_io import record_while_pressed
+from .audio_io import record_while_pressed, play_wav_bytes
 
-def _bytes_to_tempfile(data: bytes, suffix: str) -> str:
-    fd, path = tempfile.mkstemp(suffix=suffix)
-    os.close(fd)
-    with open(path, "wb") as f:
-        f.write(data)
-    return path
-
-def _tts_play(client: OpenAI, model_tts: str, voice: str, text: str) -> None:
-    speech = client.audio.speech.create(model=model_tts, voice=voice, input=text)
-    mp3_path = _bytes_to_tempfile(speech.read(), ".mp3")
-    os.system(f'ffplay -autoexit -nodisp -loglevel quiet "{mp3_path}"')
-    try:
-        os.remove(mp3_path)
-    except OSError:
-        pass
+def _tts_play(
+    client: OpenAI,
+    model_tts: str,
+    voice: str,
+    text: str,
+    output_device: str | int | None = None,
+    announce_output: bool = True,
+) -> None:
+    speech = client.audio.speech.create(
+        model=model_tts,
+        voice=voice,
+        input=text,
+        response_format="wav",
+    )
+    play_wav_bytes(speech.read(), device=output_device, announce=announce_output)
 
 def _stt_transcribe(client: OpenAI, model_stt: str, wav_bytes: bytes) -> str:
     wav_path = _bytes_to_tempfile(wav_bytes, ".wav")
@@ -78,7 +77,13 @@ def _select_mode_by_voice(client: OpenAI, settings, ptt: PushToTalk, leds: LedSt
         "Willkommen. Bitte sage jetzt entweder: Echo. Oder: Chatbox. "
         "Halte dazu den Kontakt gedrückt und sprich."
     )
-    _tts_play(client, settings.model_tts, settings.tts_voice, prompt)
+    _tts_play(
+        client,
+        settings.model_tts,
+        settings.tts_voice,
+        prompt,
+        output_device=settings.audio_output_device,
+    )
 
     for _ in range(3):
         ptt.wait_for_press()
@@ -88,16 +93,43 @@ def _select_mode_by_voice(client: OpenAI, settings, ptt: PushToTalk, leds: LedSt
 
         text = _stt_transcribe(client, settings.model_stt, wav_bytes).lower()
         if "echo" in text:
-            _tts_play(client, settings.model_tts, settings.tts_voice, "Echo Modus aktiviert.")
+            _tts_play(
+                client,
+                settings.model_tts,
+                settings.tts_voice,
+                "Echo Modus aktiviert.",
+                output_device=settings.audio_output_device,
+                announce_output=False,
+            )
             return "echo"
         if "chat" in text or "chatbox" in text:
-            _tts_play(client, settings.model_tts, settings.tts_voice, "Chatbox Modus aktiviert.")
+            _tts_play(
+                client,
+                settings.model_tts,
+                settings.tts_voice,
+                "Chatbox Modus aktiviert.",
+                output_device=settings.audio_output_device,
+                announce_output=False,
+            )
             return "chatbox"
 
-        _tts_play(client, settings.model_tts, settings.tts_voice,
-                  "Ich habe das nicht verstanden. Bitte sage Echo oder Chatbox.")
+        _tts_play(
+            client,
+            settings.model_tts,
+            settings.tts_voice,
+            "Ich habe das nicht verstanden. Bitte sage Echo oder Chatbox.",
+            output_device=settings.audio_output_device,
+            announce_output=False,
+        )
 
-    _tts_play(client, settings.model_tts, settings.tts_voice, "Ich wähle automatisch Chatbox.")
+    _tts_play(
+        client,
+        settings.model_tts,
+        settings.tts_voice,
+        "Ich wähle automatisch Chatbox.",
+        output_device=settings.audio_output_device,
+        announce_output=False,
+    )
     return "chatbox"
 
 def main():
@@ -247,7 +279,14 @@ def main():
                 answer = (chat.choices[0].message.content or "").strip()
 
             leds.set(Status.SPEAKING)
-            _tts_play(client, settings.model_tts, settings.tts_voice, answer)
+            _tts_play(
+                client,
+                settings.model_tts,
+                settings.tts_voice,
+                answer,
+                output_device=settings.audio_output_device,
+                announce_output=False,
+            )
             leds.set(Status.IDLE)
 
         except KeyboardInterrupt:

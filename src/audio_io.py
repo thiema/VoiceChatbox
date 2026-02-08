@@ -19,6 +19,18 @@ def _get_input_devices() -> list[tuple[int, dict]]:
     except Exception:
         return []
 
+def _get_output_devices() -> list[tuple[int, dict]]:
+    """Return list of (device_id, device_info) for output-capable devices."""
+    try:
+        devices = sd.query_devices()
+        return [
+            (i, d)
+            for i, d in enumerate(devices)
+            if d.get("max_output_channels", 0) > 0
+        ]
+    except Exception:
+        return []
+
 def _resolve_device_id(device_spec: str | int | None) -> int | None:
     """Resolve device specification (name or ID) to device ID.
 
@@ -86,6 +98,15 @@ def _print_input_devices() -> None:
     for i, d in input_devices:
         print(f"  {i}: {d['name']} (in={d['max_input_channels']})", file=sys.stderr)
 
+def _print_output_devices() -> None:
+    """Print available output devices for troubleshooting."""
+    output_devices = _get_output_devices()
+    if not output_devices:
+        return
+    print("Verfügbare Output-Geräte:", file=sys.stderr)
+    for i, d in output_devices:
+        print(f"  {i}: {d['name']} (out={d['max_output_channels']})", file=sys.stderr)
+
 def select_input_device(device_spec: str | int | None, announce: bool = True) -> int | None:
     """Select input device; optionally announce list and selection.
 
@@ -112,6 +133,61 @@ def select_input_device(device_spec: str | int | None, announce: bool = True) ->
         except Exception:
             pass
     return device_id
+
+def select_output_device(device_spec: str | int | None, announce: bool = True) -> int | None:
+    """Select output device; optionally announce list and selection.
+
+    Falls back to first available output device if spec not found.
+    """
+    if announce:
+        _print_output_devices()
+    device_id = _resolve_device_id(device_spec)
+    if device_id is not None:
+        try:
+            dev_info = sd.query_devices(device_id)
+            if dev_info.get("max_output_channels", 0) <= 0:
+                device_id = None
+        except Exception:
+            device_id = None
+    if device_id is None:
+        output_devices = _get_output_devices()
+        if output_devices:
+            fallback_id, _ = output_devices[0]
+            if announce and device_spec:
+                print(
+                    f"⚠️  Ausgabegerät '{device_spec}' nicht gefunden. "
+                    f"Fallback auf erstes verfügbares Gerät (ID: {fallback_id}).",
+                    file=sys.stderr
+                )
+            device_id = fallback_id
+    if announce and device_id is not None:
+        try:
+            dev_info = sd.query_devices(device_id)
+            print(f"Verwendetes Output-Gerät: {dev_info['name']} (ID: {device_id})", file=sys.stderr)
+        except Exception:
+            pass
+    return device_id
+
+def play_wav_bytes(wav_bytes: bytes, device: str | int | None = None, announce: bool = True) -> None:
+    """Play WAV audio bytes via the selected output device."""
+    if not wav_bytes:
+        return
+    device_id = select_output_device(device, announce=announce)
+    with wave.open(io.BytesIO(wav_bytes), "rb") as wf:
+        channels = wf.getnchannels()
+        sampwidth = wf.getsampwidth()
+        samplerate = wf.getframerate()
+        frames = wf.readframes(wf.getnframes())
+
+    if sampwidth != 2:
+        raise ValueError(f"Unsupported sample width: {sampwidth * 8} bits")
+
+    audio = np.frombuffer(frames, dtype=np.int16)
+    if channels > 1:
+        audio = audio.reshape(-1, channels)
+
+    sd.play(audio, samplerate=samplerate, device=device_id)
+    sd.wait()
 
 def record_while_pressed(is_pressed_fn, samplerate: int = 16000, device: str | int | None = None) -> bytes:
     """

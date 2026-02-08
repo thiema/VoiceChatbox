@@ -262,6 +262,7 @@ def run_live_recognition(enable_chatgpt: bool = False):
             model_chat=settings.model_chat,
             model_tts=settings.model_tts,
             tts_voice=settings.tts_voice,
+            audio_output_device=settings.audio_output_device,
         )
 
     # Live-Spracherkennung starten

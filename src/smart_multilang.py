@@ -468,6 +468,7 @@ def run_smart_multilang_recognition(
             model_chat=settings.model_chat,
             model_tts=settings.model_tts,
             tts_voice=settings.tts_voice,
+            audio_output_device=settings.audio_output_device,
         )
 
     # Initialisiere Erkennung
