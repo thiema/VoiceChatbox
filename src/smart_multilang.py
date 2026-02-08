@@ -9,7 +9,7 @@ import sounddevice as sd
 from typing import Callable, Optional, Dict, List, Tuple
 from pathlib import Path
 
-from .audio_io import _resolve_device_id, select_input_device, wait_for_playback_end, play_beep_sequence
+from .audio_io import _resolve_device_id, select_input_device, wait_for_playback_end, play_beep_sequence, play_hangup_tone
 from .chat_assistant import ChatAssistant
 from .sentence_detection import should_send_to_chatgpt, chatgpt_filter_decision
 from .oled_display import OledDisplay
@@ -319,6 +319,7 @@ class SmartMultiLanguageVoskRecognition:
 
     def _set_listening(self, active: bool, reason: str) -> None:
         status_text = "BEREIT" if active else "PAUSE"
+        prev_active = self.listening_active
         if self.listening_active == active and self._status_text == status_text:
             return
         self.listening_active = active
@@ -329,6 +330,8 @@ class SmartMultiLanguageVoskRecognition:
         if active:
             self._last_activity_ts = time.time()
             play_beep_sequence(device=self.audio_output_device, announce=False)
+        elif prev_active and not active:
+            play_hangup_tone(device=self.audio_output_device, announce=False)
 
     def _debug(self, msg: str) -> None:
         if self.debug_logs:
