@@ -85,7 +85,8 @@ class OledDisplay:
             self.font = ImageFont.truetype(self.cfg.font_path, self.cfg.font_size)
             self.clear()
             return True
-        except Exception:
+        except Exception as e:
+            print(f"OLED init failed: {e}", file=sys.stderr)
             self.device = None
             self.font = None
             return False
