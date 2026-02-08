@@ -173,6 +173,7 @@ class LiveMultiLanguageVoskRecognition:
                  chat_filter_debug: bool = False,
                  chat_ignore_after_tts_sec: float = 2.0,
                  auto_pause_after_sec: float = 10.0,
+                 debug_logs: bool = False,
                  chat_assistant: Optional[ChatAssistant] = None):
         """
         Initialisiere Live mehrsprachige Spracherkennung.
@@ -203,6 +204,7 @@ class LiveMultiLanguageVoskRecognition:
         self.chat_filter_debug = chat_filter_debug
         self.chat_ignore_after_tts_sec = chat_ignore_after_tts_sec
         self.auto_pause_after_sec = auto_pause_after_sec
+        self.debug_logs = debug_logs
         self._ignore_until = 0.0
         self._last_tts_text = ""
         self._pending_prefix = ""
@@ -259,6 +261,11 @@ class LiveMultiLanguageVoskRecognition:
         if active:
             self._last_activity_ts = time.time()
 
+    def _debug(self, msg: str) -> None:
+        if self.debug_logs:
+            ts = time.strftime("%H:%M:%S")
+            print(f"[DEBUG {ts}] {msg}")
+
     def _on_tts_done(self, text: str) -> None:
         self._last_tts_text = (text or "").strip().lower()
         self._ignore_until = time.time() + self.chat_ignore_after_tts_sec
@@ -297,7 +304,9 @@ class LiveMultiLanguageVoskRecognition:
         try:
             # Während Ausgabe nichts aufnehmen
             wait_for_playback_end()
+            self._debug("record_chunk: start")
             audio_data = self._record_chunk()
+            self._debug(f"record_chunk: done len={len(audio_data)}")
             
             if not self.is_running:
                 return
@@ -308,16 +317,20 @@ class LiveMultiLanguageVoskRecognition:
             if self.mode == "best":
                 lang, text = self.vosk.transcribe_audio_best(wav_bytes)
                 if text:
+                    self._debug(f"transcribe(best): '{text}'")
                     self._last_activity_ts = time.time()
                     if time.time() < self._ignore_until:
                         if self.chat_filter_debug:
                             print("ChatGPT-Filter: blockiert (nach TTS)")
+                        self._debug("ignore: after tts")
                         return
                     if not self._should_process_text(text):
+                        self._debug("command/listen filter: skip")
                         return
                     if self._pending_prefix:
                         text = f"{self._pending_prefix} {text}".strip()
                         self._pending_prefix = ""
+                        self._debug(f"pending_prefix merged: '{text}'")
                     if self.current_text:
                         self.current_text += " " + text
                     else:
@@ -338,16 +351,20 @@ class LiveMultiLanguageVoskRecognition:
             elif self.mode == "combined":
                 text = self.vosk.transcribe_audio_combined(wav_bytes)
                 if text:
+                    self._debug(f"transcribe(combined): '{text}'")
                     self._last_activity_ts = time.time()
                     if time.time() < self._ignore_until:
                         if self.chat_filter_debug:
                             print("ChatGPT-Filter: blockiert (nach TTS)")
+                        self._debug("ignore: after tts")
                         return
                     if not self._should_process_text(text):
+                        self._debug("command/listen filter: skip")
                         return
                     if self._pending_prefix:
                         text = f"{self._pending_prefix} {text}".strip()
                         self._pending_prefix = ""
+                        self._debug(f"pending_prefix merged: '{text}'")
                     if self.current_text:
                         self.current_text += " " + text
                     else:
@@ -373,16 +390,20 @@ class LiveMultiLanguageVoskRecognition:
                     # Verwende das beste Ergebnis für Display
                     best_lang = max(results.keys(), key=lambda k: len(results[k]))
                     text = results[best_lang]
+                    self._debug(f"transcribe(all best={best_lang}): '{text}'")
                     self._last_activity_ts = time.time()
                     if time.time() < self._ignore_until:
                         if self.chat_filter_debug:
                             print("ChatGPT-Filter: blockiert (nach TTS)")
+                        self._debug("ignore: after tts")
                         return
                     if text and not self._should_process_text(text):
+                        self._debug("command/listen filter: skip")
                         return
                     if self._pending_prefix:
                         text = f"{self._pending_prefix} {text}".strip()
                         self._pending_prefix = ""
+                        self._debug(f"pending_prefix merged: '{text}'")
                     if self.current_text:
                         self.current_text += " " + text
                     else:
@@ -529,6 +550,7 @@ def run_multilang_vosk_recognition(
         chat_filter_debug=settings.chat_filter_debug,
         chat_ignore_after_tts_sec=settings.chat_ignore_after_tts_sec,
         auto_pause_after_sec=settings.auto_pause_after_sec,
+        debug_logs=settings.debug_logs,
         chat_assistant=chat_assistant,
     )
 

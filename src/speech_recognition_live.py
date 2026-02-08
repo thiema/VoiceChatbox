@@ -29,6 +29,7 @@ class LiveSpeechRecognition:
                  chat_filter_debug: bool = False,
                  chat_ignore_after_tts_sec: float = 2.0,
                  auto_pause_after_sec: float = 10.0,
+                 debug_logs: bool = False,
                  chat_assistant: Optional[ChatAssistant] = None):
         self.client = client
         self.model_stt = model_stt
@@ -65,6 +66,7 @@ class LiveSpeechRecognition:
         self.chat_filter_debug = chat_filter_debug
         self.chat_ignore_after_tts_sec = chat_ignore_after_tts_sec
         self.auto_pause_after_sec = auto_pause_after_sec
+        self.debug_logs = debug_logs
         self._ignore_until = 0.0
         self._last_tts_text = ""
         self._pending_prefix = ""
@@ -143,6 +145,11 @@ class LiveSpeechRecognition:
         if active:
             self._last_activity_ts = time.time()
 
+    def _debug(self, msg: str) -> None:
+        if self.debug_logs:
+            ts = time.strftime("%H:%M:%S")
+            print(f"[DEBUG {ts}] {msg}")
+
     def _on_tts_done(self, text: str) -> None:
         self._last_tts_text = (text or "").strip().lower()
         self._ignore_until = time.time() + self.chat_ignore_after_tts_sec
@@ -172,12 +179,14 @@ class LiveSpeechRecognition:
         if now < self._ignore_until:
             if self.chat_filter_debug:
                 print("ChatGPT-Filter: blockiert (nach TTS)")
+            self._debug("ignore: after tts")
             return
         norm_text = self._normalize_command_text(text)
         if self._last_tts_text and norm_text:
             if norm_text in self._last_tts_text or self._last_tts_text in norm_text:
                 if self.chat_filter_debug:
                     print("ChatGPT-Filter: blockiert (Echo von TTS)")
+                self._debug("ignore: tts echo")
                 return
         # Prüfe, ob Text bereits vorhanden ist (verhindert Doppel-Ausgabe)
         if self.current_text and text.lower() in self.current_text.lower():
@@ -188,18 +197,22 @@ class LiveSpeechRecognition:
         cmd = self._check_commands(text)
         if cmd == "stop":
             self._set_listening(False, "STOPP erkannt")
+            self._debug("command: stop")
             return
         if cmd == "wake":
             self._set_listening(True, "OK GOOGLE erkannt")
+            self._debug("command: wake")
             return
 
         if not self.listening_active:
             self._set_listening(False, "Warte auf Wake")
+            self._debug("listening inactive: skip")
             return
 
         if self._pending_prefix:
             text = f"{self._pending_prefix} {text}".strip()
             self._pending_prefix = ""
+            self._debug(f"pending_prefix merged: '{text}'")
 
         if self.semantic_processor:
             temp_text = self.current_text + " " + text if self.current_text else text
@@ -285,7 +298,9 @@ class LiveSpeechRecognition:
         try:
             # Während Ausgabe nichts aufnehmen
             wait_for_playback_end()
+            self._debug("record_chunk: start")
             audio = self._record_chunk()
+            self._debug(f"record_chunk: done len={len(audio)}")
 
             # Falls währenddessen Ausgabe startet, Chunk verwerfen
             if is_playback_active():
@@ -293,6 +308,7 @@ class LiveSpeechRecognition:
                 self._silence_sec = 0.0
                 self._speech_active = False
                 self._speech_sec = 0.0
+                self._debug("playback active: drop chunk")
                 return
             
             if not self.is_running:
@@ -320,11 +336,13 @@ class LiveSpeechRecognition:
                     self._audio_buffer.clear()
                     self._speech_active = False
                     self._speech_sec = 0.0
+                    self._debug("max_buffer reached: transcribe")
                     text = self._transcribe_audio(wav_bytes)
                     self._process_text(text)
                 return
 
             if not self._speech_active:
+                self._debug("vad: no speech")
                 return
 
             # Stille nach Sprache erkennen
@@ -337,12 +355,14 @@ class LiveSpeechRecognition:
                     self._speech_active = False
                     self._silence_sec = 0.0
                     self._speech_sec = 0.0
+                    self._debug("speech too short: drop")
                     return
                 wav_bytes = self._audio_to_wav(np.concatenate(self._audio_buffer))
                 self._audio_buffer.clear()
                 self._speech_active = False
                 self._silence_sec = 0.0
                 self._speech_sec = 0.0
+                self._debug("silence: transcribe")
                 text = self._transcribe_audio(wav_bytes)
                 self._process_text(text)
         except Exception as e:
@@ -453,6 +473,8 @@ def run_live_recognition(enable_chatgpt: bool = False):
         trivial_words=settings.trivial_words,
         chat_filter_debug=settings.chat_filter_debug,
         chat_ignore_after_tts_sec=settings.chat_ignore_after_tts_sec,
+        auto_pause_after_sec=settings.auto_pause_after_sec,
+        debug_logs=settings.debug_logs,
         chat_assistant=chat_assistant,
     )
 

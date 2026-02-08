@@ -34,6 +34,7 @@ class SmartMultiLanguageVoskRecognition:
                  chat_filter_debug: bool = False,
                  chat_ignore_after_tts_sec: float = 2.0,
                  auto_pause_after_sec: float = 10.0,
+                 debug_logs: bool = False,
                  chat_assistant: Optional[ChatAssistant] = None):
         """
         Initialisiere intelligente mehrsprachige Spracherkennung.
@@ -66,6 +67,7 @@ class SmartMultiLanguageVoskRecognition:
         self.chat_filter_debug = chat_filter_debug
         self.chat_ignore_after_tts_sec = chat_ignore_after_tts_sec
         self.auto_pause_after_sec = auto_pause_after_sec
+        self.debug_logs = debug_logs
         self._ignore_until = 0.0
         self._last_tts_text = ""
         self._pending_prefix = ""
@@ -325,6 +327,11 @@ class SmartMultiLanguageVoskRecognition:
         if active:
             self._last_activity_ts = time.time()
 
+    def _debug(self, msg: str) -> None:
+        if self.debug_logs:
+            ts = time.strftime("%H:%M:%S")
+            print(f"[DEBUG {ts}] {msg}")
+
     def _on_tts_done(self, text: str) -> None:
         self._last_tts_text = (text or "").strip().lower()
         self._ignore_until = time.time() + self.chat_ignore_after_tts_sec
@@ -364,22 +371,29 @@ class SmartMultiLanguageVoskRecognition:
             # Während Ausgabe nichts aufnehmen
             wait_for_playback_end()
             # Audio aufnehmen
+            self._debug("record_chunk: start")
             audio_data = self._record_chunk()
+            self._debug(f"record_chunk: done len={len(audio_data)}")
             
             if not self.is_running:
                 return
             
             # Voice Activity Detection
             if not self._detect_speech(audio_data, threshold=0.005):
+                self._debug("vad: no speech")
                 return
             
             # Transkribiere mit deutschem Modell (Hauptsprache)
             text_de = self._transcribe_audio_de(audio_data)
+            if text_de:
+                self._debug(f"transcribe(de): '{text_de}'")
             
             # Transkribiere mit englischem Modell (nur wenn verfügbar)
             text_en = ""
             if self.model_en:
                 text_en = self._transcribe_audio_en(audio_data)
+                if text_en:
+                    self._debug(f"transcribe(en): '{text_en}'")
             
             # Kombiniere Texte intelligent
             text = self._merge_texts(text_de, text_en)
@@ -389,11 +403,14 @@ class SmartMultiLanguageVoskRecognition:
                 if self._pending_prefix:
                     text = f"{self._pending_prefix} {text}".strip()
                     self._pending_prefix = ""
+                    self._debug(f"pending_prefix merged: '{text}'")
                 if time.time() < self._ignore_until:
                     if self.chat_filter_debug:
                         print("ChatGPT-Filter: blockiert (nach TTS)")
+                    self._debug("ignore: after tts")
                     return
                 if not self._should_process_text(text):
+                    self._debug("command/listen filter: skip")
                     return
                 # Stelle sicher, dass Text Leerzeichen hat
                 text = re.sub(r'\s+', ' ', text).strip()
@@ -590,6 +607,7 @@ def run_smart_multilang_recognition(
         chat_filter_debug=settings.chat_filter_debug,
         chat_ignore_after_tts_sec=settings.chat_ignore_after_tts_sec,
         auto_pause_after_sec=settings.auto_pause_after_sec,
+        debug_logs=settings.debug_logs,
         chat_assistant=chat_assistant,
     )
 
