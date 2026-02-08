@@ -10,7 +10,7 @@ from typing import Callable, Optional
 from openai import OpenAI
 
 from .config import load_settings
-from .audio_io import _resolve_device_id, select_input_device, wait_for_playback_end
+from .audio_io import _resolve_device_id, select_input_device, wait_for_playback_end, is_playback_active
 from .oled_display import OledDisplay
 from .sentence_detection import SemanticSpeechRecognition
 from .chat_assistant import ChatAssistant
@@ -28,8 +28,11 @@ class LiveSpeechRecognition:
         self.device_id = _resolve_device_id(device)
         self.samplerate = 16000
         self.chunk_duration = 0.5  # Sekunden pro Chunk
-        self.pause_duration = 0.8  # Sekunden Stille bis "Ende der Aussage"
-        self.silence_threshold = 0.01  # RMS-Schwellwert (0..1)
+        self.pause_duration = 0.9  # Sekunden Stille bis "Ende der Aussage"
+        self.silence_threshold = 0.02  # RMS-Schwellwert (0..1)
+        self.noise_floor = 0.0
+        self.noise_alpha = 0.95
+        self.min_speech_sec = 0.6
         self.max_buffer_sec = 20.0
         self.is_running = False
         self.current_text = ""
@@ -43,6 +46,7 @@ class LiveSpeechRecognition:
         self._audio_buffer: list[np.ndarray] = []
         self._silence_sec = 0.0
         self._speech_active = False
+        self._speech_sec = 0.0
         
     def set_text_callback(self, callback: Callable[[str], None]) -> None:
         """Setze Callback-Funktion, die bei neuem Text aufgerufen wird."""
@@ -183,23 +187,40 @@ class LiveSpeechRecognition:
             # Während Ausgabe nichts aufnehmen
             wait_for_playback_end()
             audio = self._record_chunk()
+
+            # Falls währenddessen Ausgabe startet, Chunk verwerfen
+            if is_playback_active():
+                self._audio_buffer.clear()
+                self._silence_sec = 0.0
+                self._speech_active = False
+                self._speech_sec = 0.0
+                return
             
             if not self.is_running:
                 return
 
             # RMS für einfache Sprachaktivität
             rms = float(np.sqrt(np.mean(audio.astype(np.float32) ** 2)) / 32768.0) if audio.size else 0.0
-            is_speech = rms > self.silence_threshold
+            if not self._speech_active:
+                # Rauschpegel lernen (EMA)
+                if self.noise_floor == 0.0:
+                    self.noise_floor = rms
+                else:
+                    self.noise_floor = (self.noise_alpha * self.noise_floor) + ((1 - self.noise_alpha) * rms)
+            dynamic_threshold = max(self.silence_threshold, self.noise_floor * 3.0)
+            is_speech = rms > dynamic_threshold
 
             if is_speech:
                 self._audio_buffer.append(audio)
                 self._silence_sec = 0.0
                 self._speech_active = True
+                self._speech_sec += self.chunk_duration
                 total_sec = (sum(len(a) for a in self._audio_buffer) / self.samplerate)
                 if total_sec >= self.max_buffer_sec:
                     wav_bytes = self._audio_to_wav(np.concatenate(self._audio_buffer))
                     self._audio_buffer.clear()
                     self._speech_active = False
+                    self._speech_sec = 0.0
                     text = self._transcribe_audio(wav_bytes)
                     self._process_text(text)
                 return
@@ -210,10 +231,19 @@ class LiveSpeechRecognition:
             # Stille nach Sprache erkennen
             self._silence_sec += self.chunk_duration
             if self._silence_sec >= self.pause_duration and self._audio_buffer:
+                total_sec = (sum(len(a) for a in self._audio_buffer) / self.samplerate)
+                if total_sec < self.min_speech_sec:
+                    # Zu kurz -> verwerfen (verhindert Rauschen/Artefakte)
+                    self._audio_buffer.clear()
+                    self._speech_active = False
+                    self._silence_sec = 0.0
+                    self._speech_sec = 0.0
+                    return
                 wav_bytes = self._audio_to_wav(np.concatenate(self._audio_buffer))
                 self._audio_buffer.clear()
                 self._speech_active = False
                 self._silence_sec = 0.0
+                self._speech_sec = 0.0
                 text = self._transcribe_audio(wav_bytes)
                 self._process_text(text)
         except Exception as e:
@@ -261,6 +291,7 @@ class LiveSpeechRecognition:
         self._audio_buffer.clear()
         self._silence_sec = 0.0
         self._speech_active = False
+        self._speech_sec = 0.0
         self._display_text = ""
         if self.oled:
             self.oled.clear()
