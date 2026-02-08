@@ -4,6 +4,7 @@ import wave
 import json
 import re
 import time
+import threading
 import numpy as np
 import sounddevice as sd
 from typing import Callable, Optional
@@ -51,8 +52,24 @@ class VoskSpeechRecognition:
             
             start_ts = time.time()
             print(f"Lade Vosk-Modell von: {self.model_path}")
+            stop_event = threading.Event()
+
+            def _spinner():
+                spinner = "|/-\\"
+                i = 0
+                while not stop_event.is_set():
+                    elapsed = time.time() - start_ts
+                    print(f"\rLade Vosk-Modell... {spinner[i % 4]} {elapsed:.1f}s", end="", flush=True)
+                    i += 1
+                    time.sleep(0.2)
+
+            thread = threading.Thread(target=_spinner, daemon=True)
+            thread.start()
             model = Model(str(self.model_path))
             self.recognizer = model
+            stop_event.set()
+            thread.join(timeout=0.2)
+            print("\r", end="")
             elapsed = time.time() - start_ts
             print(f"Vosk-Modell geladen. ({elapsed:.1f}s)")
         except ImportError:
@@ -168,6 +185,7 @@ class LiveVoskRecognition:
                  chunk_duration: float = 3.0, enable_audio_processing: bool = True,
                  enable_semantic: bool = True, language: str = "de",
                  wake_phrases: tuple[str, ...] | None = None,
+                 context_phrases: tuple[str, ...] | None = None,
                  stop_phrases: tuple[str, ...] | None = None,
                  min_chat_words: int = 2,
                  trivial_words: list[str] | None = None,
@@ -176,6 +194,8 @@ class LiveVoskRecognition:
                  auto_pause_after_sec: float = 10.0,
                  debug_logs: bool = False,
                  audio_output_device: str | int | None = None,
+                 prompt_new: str | None = None,
+                 prompt_context: str | None = None,
                  chat_assistant: Optional[ChatAssistant] = None):
         """
         Initialisiere Live-Vosk-Spracherkennung.
@@ -206,6 +226,7 @@ class LiveVoskRecognition:
         self._paused_notice = False
         self._status_text: Optional[str] = None
         self.wake_phrases = wake_phrases or ("ok google", "okay google")
+        self.context_phrases = context_phrases or ("ok google weiter", "okay google weiter")
         self.stop_phrases = stop_phrases or ("stopp", "stop")
         self.min_chat_words = min_chat_words
         self.trivial_words = set(trivial_words or [])
@@ -216,6 +237,9 @@ class LiveVoskRecognition:
         self._last_tts_text = ""
         self._pending_prefix = ""
         self._last_activity_ts = time.time()
+        self.context_mode = False
+        self.prompt_new = prompt_new
+        self.prompt_context = prompt_context
     
     def set_text_callback(self, callback: Callable[[str], None]) -> None:
         """Setze Callback-Funktion, die bei neuem Text aufgerufen wird."""
@@ -294,8 +318,10 @@ class LiveVoskRecognition:
         if self.oled and self.oled.device:
             self.oled.show_text_scroll(text)
 
-    def _set_listening(self, active: bool, reason: str) -> None:
-        status_text = "BEREIT" if active else "PAUSE"
+    def _set_listening(self, active: bool, reason: str, context_mode: bool | None = None) -> None:
+        if context_mode is not None:
+            self.context_mode = context_mode
+        status_text = "BEREIT MIT Kontext" if active and self.context_mode else "BEREIT" if active else "PAUSE"
         prev_active = self.listening_active
         if self.listening_active == active and self._status_text == status_text:
             return
@@ -308,6 +334,7 @@ class LiveVoskRecognition:
             self._last_activity_ts = time.time()
             play_beep_sequence(device=self.audio_output_device, announce=False)
         elif prev_active and not active:
+            self.context_mode = False
             play_hangup_tone(device=self.audio_output_device, announce=False)
 
     def _debug(self, msg: str) -> None:
@@ -315,10 +342,13 @@ class LiveVoskRecognition:
             ts = time.strftime("%H:%M:%S")
             print(f"[DEBUG {ts}] {msg}")
 
+    def _current_prompt(self) -> Optional[str]:
+        return self.prompt_context if self.context_mode else self.prompt_new
+
     def _on_tts_done(self, text: str) -> None:
         self._last_tts_text = (text or "").strip().lower()
         self._ignore_until = time.time() + self.chat_ignore_after_tts_sec
-        self._set_listening(False, "TTS fertig")
+        self._set_listening(False, "TTS fertig", context_mode=False)
 
     @staticmethod
     def _normalize_command_text(text: str) -> str:
@@ -331,6 +361,8 @@ class LiveVoskRecognition:
         padded = f" {norm} "
         if any(f" {phrase} " in padded for phrase in self.stop_phrases):
             return "stop"
+        if any(f" {phrase} " in padded for phrase in self.context_phrases):
+            return "wake_context"
         if any(f" {phrase} " in padded for phrase in self.wake_phrases):
             return "wake"
         return None
@@ -378,12 +410,16 @@ class LiveVoskRecognition:
 
                 cmd = self._check_commands(text)
                 if cmd == "stop":
-                    self._set_listening(False, "STOPP erkannt")
+                    self._set_listening(False, "STOPP erkannt", context_mode=False)
                     self._debug("command: stop")
                     return
                 if cmd == "wake":
-                    self._set_listening(True, "OK GOOGLE erkannt")
+                    self._set_listening(True, "OK GOOGLE erkannt", context_mode=False)
                     self._debug("command: wake")
+                    return
+                if cmd == "wake_context":
+                    self._set_listening(True, "OK GOOGLE WEITER erkannt", context_mode=True)
+                    self._debug("command: wake_context")
                     return
 
                 if not self.listening_active:
@@ -453,7 +489,10 @@ class LiveVoskRecognition:
                                     sentence.text, self.min_chat_words, self.trivial_words
                                 )
                                 if allowed:
-                                    self.chat_assistant.handle_text(sentence.text)
+                                    self.chat_assistant.handle_text(
+                                        sentence.text,
+                                        system_prompt_override=self._current_prompt(),
+                                    )
                                 else:
                                     self._pending_prefix = sentence.text
                                     if self.chat_filter_debug:
@@ -474,7 +513,10 @@ class LiveVoskRecognition:
                             )
                             if allowed:
                                 self._last_chat_text = text
-                                self.chat_assistant.handle_text(text)
+                                self.chat_assistant.handle_text(
+                                    text,
+                                    system_prompt_override=self._current_prompt(),
+                                )
                             else:
                                 self._pending_prefix = text
                                 if self.chat_filter_debug:
@@ -501,6 +543,7 @@ class LiveVoskRecognition:
         self._paused_notice = False
         self._status_text = None
         self._last_activity_ts = time.time()
+        self.context_mode = False
 
         # Geräteauswahl anzeigen + Fallback
         self.vosk.device_id = select_input_device(self.vosk.device_spec, announce=True)
@@ -531,6 +574,7 @@ class LiveVoskRecognition:
         self.listening_active = False
         self._paused_notice = False
         self._status_text = None
+        self.context_mode = False
         if self.oled:
             self.oled.clear()
         print("Spracherkennung gestoppt.")
@@ -582,6 +626,7 @@ def run_live_vosk_recognition(model_path: Optional[str] = None, enable_chatgpt: 
         model_path=model_path,
         device=settings.audio_input_device,
         wake_phrases=tuple(settings.wake_phrases),
+        context_phrases=tuple(settings.context_phrases),
         stop_phrases=tuple(settings.stop_phrases),
         min_chat_words=settings.min_chat_words,
         trivial_words=settings.trivial_words,
@@ -590,6 +635,8 @@ def run_live_vosk_recognition(model_path: Optional[str] = None, enable_chatgpt: 
         auto_pause_after_sec=settings.auto_pause_after_sec,
         debug_logs=settings.debug_logs,
         audio_output_device=settings.audio_output_device,
+        prompt_new=settings.chat_system_prompt_new,
+        prompt_context=settings.chat_system_prompt_context,
         chat_assistant=chat_assistant,
     )
 

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import threading
-from typing import Optional
+from typing import Optional, Callable
 
 from openai import OpenAI
 
@@ -18,6 +18,7 @@ class ChatAssistant:
         tts_voice: str,
         audio_output_device: str | int | None = None,
         announce_output: bool = True,
+        on_tts_done: Optional[Callable[[str], None]] = None,
         system_prompt: str = "Du bist ein hilfreicher, knapper Sprachassistent.",
     ) -> None:
         self.client = client
@@ -26,34 +27,40 @@ class ChatAssistant:
         self.tts_voice = tts_voice
         self.audio_output_device = audio_output_device
         self._announce_output = announce_output
+        self._on_tts_done = on_tts_done
         self.system_prompt = system_prompt
         self._inflight = False
-        self._last_text: Optional[str] = None
+        self._last_request: Optional[tuple[str, str]] = None
         self._lock = threading.Lock()
 
-    def handle_text(self, text: str) -> None:
+    def set_on_tts_done(self, callback: Optional[Callable[[str], None]]) -> None:
+        self._on_tts_done = callback
+
+    def handle_text(self, text: str, system_prompt_override: Optional[str] = None) -> None:
         """Send text to ChatGPT and speak the response (non-blocking)."""
         text = (text or "").strip()
         if not text:
             return
-        if self._last_text == text:
-            return
+        system_prompt = (system_prompt_override or self.system_prompt).strip()
+        request_key = (text, system_prompt)
 
         with self._lock:
             if self._inflight:
                 return
+            if self._last_request == request_key:
+                return
             self._inflight = True
-            self._last_text = text
+            self._last_request = request_key
 
-        thread = threading.Thread(target=self._run, args=(text,), daemon=True)
+        thread = threading.Thread(target=self._run, args=(text, system_prompt), daemon=True)
         thread.start()
 
-    def _run(self, text: str) -> None:
+    def _run(self, text: str, system_prompt: str) -> None:
         try:
             chat = self.client.chat.completions.create(
                 model=self.model_chat,
                 messages=[
-                    {"role": "system", "content": self.system_prompt},
+                    {"role": "system", "content": system_prompt},
                     {"role": "user", "content": text},
                 ],
             )
@@ -79,3 +86,8 @@ class ChatAssistant:
         announce = self._announce_output
         self._announce_output = False
         play_wav_bytes(wav_bytes, device=self.audio_output_device, announce=announce)
+        if self._on_tts_done:
+            try:
+                self._on_tts_done(text)
+            except Exception:
+                pass

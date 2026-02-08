@@ -35,6 +35,7 @@ class Settings:
     vosk_model_path_en: str | None  # Englisch
     live_pause_duration: float
     wake_phrases: list[str]
+    context_phrases: list[str]
     stop_phrases: list[str]
     min_chat_words: int
     trivial_words: list[str]
@@ -42,6 +43,8 @@ class Settings:
     chat_ignore_after_tts_sec: float
     auto_pause_after_sec: float
     debug_logs: bool
+    chat_system_prompt_new: str
+    chat_system_prompt_context: str
 
 def load_settings() -> Settings:
     key = os.getenv("OPENAI_API_KEY", "").strip()
@@ -49,6 +52,9 @@ def load_settings() -> Settings:
         raise RuntimeError("OPENAI_API_KEY fehlt. Bitte in .env setzen.")
 
     wake_phrases = [p.strip().lower() for p in os.getenv("WAKE_PHRASES", "ok google,okay google,hey google").split(",") if p.strip()]
+    context_phrases = [p.strip().lower() for p in os.getenv(
+        "CONTEXT_PHRASES", "ok google weiter,okay google weiter,hey google weiter"
+    ).split(",") if p.strip()]
     stop_phrases = [p.strip().lower() for p in os.getenv("STOP_PHRASES", "stopp,stop").split(",") if p.strip()]
     min_chat_words = int(os.getenv("MIN_CHAT_WORDS", "2"))
     trivial_words = [p.strip().lower() for p in os.getenv("TRIVIAL_WORDS", "").split(",") if p.strip()]
@@ -56,6 +62,16 @@ def load_settings() -> Settings:
     chat_ignore_after_tts_sec = float(os.getenv("CHAT_IGNORE_AFTER_TTS_SEC", "2.0"))
     auto_pause_after_sec = float(os.getenv("AUTO_PAUSE_AFTER_SEC", "10"))
     debug_logs = _get_bool("DEBUG_LOGS", False)
+    chat_system_prompt_new = os.getenv(
+        "CHAT_SYSTEM_PROMPT_NEW",
+        "Du behandelst jede Eingabe als eigenständige, neue Frage. "
+        "Kein Bezug zu früheren Fragen oder Antworten. Keine Kontextübernahme."
+    )
+    chat_system_prompt_context = os.getenv(
+        "CHAT_SYSTEM_PROMPT_CONTEXT",
+        "Du bist ein hilfreicher, knapper Sprachassistent. "
+        "Du darfst Kontext der laufenden Unterhaltung berücksichtigen."
+    )
 
     return Settings(
         openai_api_key=key,
@@ -79,6 +95,7 @@ def load_settings() -> Settings:
         vosk_model_path_en=os.getenv("VOSK_MODEL_PATH_EN") or None,
         live_pause_duration=float(os.getenv("LIVE_PAUSE_DURATION", "0.9")),
         wake_phrases=wake_phrases,
+        context_phrases=context_phrases,
         stop_phrases=stop_phrases,
         min_chat_words=min_chat_words,
         trivial_words=trivial_words,
@@ -86,4 +103,6 @@ def load_settings() -> Settings:
         chat_ignore_after_tts_sec=chat_ignore_after_tts_sec,
         auto_pause_after_sec=auto_pause_after_sec,
         debug_logs=debug_logs,
+        chat_system_prompt_new=chat_system_prompt_new,
+        chat_system_prompt_context=chat_system_prompt_context,
     )
