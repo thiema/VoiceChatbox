@@ -27,7 +27,10 @@ class LiveSpeechRecognition:
         self.device_spec = device
         self.device_id = _resolve_device_id(device)
         self.samplerate = 16000
-        self.chunk_duration = 2.0  # Sekunden pro Chunk
+        self.chunk_duration = 0.5  # Sekunden pro Chunk
+        self.pause_duration = 0.8  # Sekunden Stille bis "Ende der Aussage"
+        self.silence_threshold = 0.01  # RMS-Schwellwert (0..1)
+        self.max_buffer_sec = 20.0
         self.is_running = False
         self.current_text = ""
         self.oled: Optional[OledDisplay] = None
@@ -36,6 +39,9 @@ class LiveSpeechRecognition:
         self.semantic_processor = SemanticSpeechRecognition(language=language) if enable_semantic else None
         self.chat_assistant = chat_assistant
         self._last_chat_text: Optional[str] = None
+        self._audio_buffer: list[np.ndarray] = []
+        self._silence_sec = 0.0
+        self._speech_active = False
         
     def set_text_callback(self, callback: Callable[[str], None]) -> None:
         """Setze Callback-Funktion, die bei neuem Text aufgerufen wird."""
@@ -66,8 +72,8 @@ class LiveSpeechRecognition:
                 except OSError:
                     pass
     
-    def _record_chunk(self) -> bytes:
-        """Nimmt einen Audio-Chunk auf und gibt WAV-Bytes zurück."""
+    def _record_chunk(self) -> np.ndarray:
+        """Nimmt einen Audio-Chunk auf und gibt Audio-Frames zurück."""
         channels = 1
         dtype = "int16"
         frames_to_record = int(self.samplerate * self.chunk_duration)
@@ -80,14 +86,16 @@ class LiveSpeechRecognition:
             device=self.device_id
         )
         sd.wait()
-        
-        # Konvertiere zu WAV
+        return recording.reshape(-1)
+
+    def _audio_to_wav(self, audio: np.ndarray) -> bytes:
+        """Konvertiere Audio-Frames zu WAV-Bytes."""
         buf = io.BytesIO()
         with wave.open(buf, "wb") as wf:
-            wf.setnchannels(channels)
+            wf.setnchannels(1)
             wf.setsampwidth(2)  # int16
             wf.setframerate(self.samplerate)
-            wf.writeframes(recording.tobytes())
+            wf.writeframes(audio.tobytes())
         return buf.getvalue()
     
     def _update_display(self, text: str) -> None:
@@ -95,97 +103,113 @@ class LiveSpeechRecognition:
         if self.oled and self.oled.device:
             self.oled.show_text_scroll(text)
     
+    def _process_text(self, text: str) -> None:
+        """Verarbeite erkannten Text (Anzeige, Semantik, ChatGPT)."""
+        if not text:
+            return
+        # Prüfe, ob Text bereits vorhanden ist (verhindert Doppel-Ausgabe)
+        if self.current_text and text.lower() in self.current_text.lower():
+            return
+
+        text = re.sub(r'\s+', ' ', text).strip()
+
+        if self.semantic_processor:
+            temp_text = self.current_text + " " + text if self.current_text else text
+            result = self.semantic_processor.process_text(temp_text)
+
+            corrected_text = result.get('corrected_text', temp_text)
+            self.current_text = corrected_text
+
+            corrections = result.get('corrections', [])
+            if corrections:
+                print(f"🔧 {len(corrections)} Korrektur(en) angewendet")
+
+            context = result.get('context')
+            if context and context.domain:
+                print(f"📋 Kontext: {context.domain} (Themen: {', '.join(context.topics)})")
+
+            for info in result['semantic_info']:
+                sentence = info['sentence']
+                analysis = info['analysis']
+                sentence_type = info['type']
+
+                type_emoji = {
+                    'question': '❓',
+                    'imperative': '❗',
+                    'exclamation': '❗',
+                    'statement': '💬'
+                }
+                emoji = type_emoji.get(sentence_type, '💬')
+
+                print(f"{emoji} [{sentence_type.upper()}] {sentence.text}")
+                if analysis['sentiment'] != 'neutral':
+                    print(f"   Sentiment: {analysis['sentiment']}")
+
+            display_text = self.semantic_processor.get_display_text(max_sentences=2)
+            if display_text:
+                self._update_display(display_text)
+            else:
+                self._update_display(self.current_text)
+
+            if self.chat_assistant:
+                for sentence in result.get("new_sentences", []):
+                    if sentence and sentence.text:
+                        self.chat_assistant.handle_text(sentence.text)
+        else:
+            if self.current_text:
+                self.current_text += " " + text
+            else:
+                self.current_text = text
+            self._update_display(self.current_text)
+
+            if self.chat_assistant:
+                if self._last_chat_text != text:
+                    self._last_chat_text = text
+                    self.chat_assistant.handle_text(text)
+
+        if self.text_callback:
+            self.text_callback(self.current_text)
+
+        print(f"Erkannt: {text}")
+        print(f"Gesamt: {self.current_text}")
+
     def _process_chunk(self) -> None:
-        """Nimmt einen Chunk auf, transkribiert ihn und aktualisiert das Display."""
+        """Nimmt einen Chunk auf, erkennt Ende der Aussage, transkribiert und aktualisiert das Display."""
         try:
-            # Audio aufnehmen
-            wav_bytes = self._record_chunk()
+            audio = self._record_chunk()
             
             if not self.is_running:
                 return
-            
-            # Transkribieren
-            text = self._transcribe_audio(wav_bytes)
-            
-            if text:
-                # Prüfe, ob Text bereits vorhanden ist (verhindert Doppel-Ausgabe)
-                if self.current_text and text.lower() in self.current_text.lower():
-                    # Überspringe, wenn bereits vorhanden
-                    return
-                
-                # Stelle sicher, dass Text Leerzeichen hat
-                text = re.sub(r'\s+', ' ', text).strip()
-                
-                # Semantische Satzerkennung mit kontext-basierter Korrektur
-                if self.semantic_processor:
-                    # Text temporär hinzufügen für Verarbeitung
-                    temp_text = self.current_text + " " + text if self.current_text else text
-                    result = self.semantic_processor.process_text(temp_text)
-                    
-                    # Verwende korrigierten Text
-                    corrected_text = result.get('corrected_text', temp_text)
-                    self.current_text = corrected_text
-                    
-                    # Zeige Korrekturen an
-                    corrections = result.get('corrections', [])
-                    if corrections:
-                        print(f"🔧 {len(corrections)} Korrektur(en) angewendet")
-                    
-                    # Zeige Kontext-Info
-                    context = result.get('context')
-                    if context and context.domain:
-                        print(f"📋 Kontext: {context.domain} (Themen: {', '.join(context.topics)})")
-                    
-                    # Zeige neue Sätze mit semantischer Info
-                    for info in result['semantic_info']:
-                        sentence = info['sentence']
-                        analysis = info['analysis']
-                        sentence_type = info['type']
-                        
-                        type_emoji = {
-                            'question': '❓',
-                            'imperative': '❗',
-                            'exclamation': '❗',
-                            'statement': '💬'
-                        }
-                        emoji = type_emoji.get(sentence_type, '💬')
-                        
-                        print(f"{emoji} [{sentence_type.upper()}] {sentence.text}")
-                        if analysis['sentiment'] != 'neutral':
-                            print(f"   Sentiment: {analysis['sentiment']}")
-                    
-                    # Verwende satz-basierte Anzeige für Display
-                    display_text = self.semantic_processor.get_display_text(max_sentences=2)
-                    if display_text:
-                        self._update_display(display_text)
-                    else:
-                        self._update_display(self.current_text)
 
-                    # Neue vollständige Sätze an ChatGPT senden
-                    if self.chat_assistant:
-                        for sentence in result.get("new_sentences", []):
-                            if sentence and sentence.text:
-                                self.chat_assistant.handle_text(sentence.text)
-                else:
-                    # Standard: Einfache Text-Anzeige (ohne Korrektur)
-                    if self.current_text:
-                        self.current_text += " " + text
-                    else:
-                        self.current_text = text
-                    self._update_display(self.current_text)
+            # RMS für einfache Sprachaktivität
+            rms = float(np.sqrt(np.mean(audio.astype(np.float32) ** 2)) / 32768.0) if audio.size else 0.0
+            is_speech = rms > self.silence_threshold
 
-                    # Fallback: gesamten Text senden (ohne Semantik)
-                    if self.chat_assistant:
-                        if self._last_chat_text != text:
-                            self._last_chat_text = text
-                            self.chat_assistant.handle_text(text)
-                
-                # Callback aufrufen
-                if self.text_callback:
-                    self.text_callback(self.current_text)
-                
-                print(f"Erkannt: {text}")
-                print(f"Gesamt: {self.current_text}")
+            if is_speech:
+                self._audio_buffer.append(audio)
+                self._silence_sec = 0.0
+                self._speech_active = True
+                total_sec = (sum(len(a) for a in self._audio_buffer) / self.samplerate)
+                if total_sec >= self.max_buffer_sec:
+                    wav_bytes = self._audio_to_wav(np.concatenate(self._audio_buffer))
+                    self._audio_buffer.clear()
+                    self._speech_active = False
+                    text = self._transcribe_audio(wav_bytes)
+                    self._process_text(text)
+                return
+
+            if not self._speech_active:
+                return
+
+            # Stille nach Sprache erkennen
+            self._silence_sec += self.chunk_duration
+            if self._silence_sec >= self.pause_duration and self._audio_buffer:
+                wav_bytes = self._audio_to_wav(np.concatenate(self._audio_buffer))
+                self._audio_buffer.clear()
+                self._speech_active = False
+                self._silence_sec = 0.0
+                text = self._transcribe_audio(wav_bytes)
+                self._process_text(text)
         except Exception as e:
             print(f"Fehler bei Verarbeitung: {e}")
     
@@ -228,6 +252,9 @@ class LiveSpeechRecognition:
     def stop(self) -> None:
         """Stoppe die Live-Spracherkennung."""
         self.is_running = False
+        self._audio_buffer.clear()
+        self._silence_sec = 0.0
+        self._speech_active = False
         if self.oled:
             self.oled.clear()
         print("Spracherkennung gestoppt.")

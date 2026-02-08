@@ -233,15 +233,9 @@ def play_wav_bytes(wav_bytes: bytes, device: str | int | None = None, announce: 
 
     sd.play(audio, samplerate=target_sr, device=device_id)
     expected_sec = max(len(audio) / float(target_sr), 0.1)
-    deadline = time.time() + expected_sec + 2.0
-    while True:
-        stream = sd.get_stream()
-        if stream is None or not stream.active:
-            break
-        if time.time() > deadline:
-            sd.stop()
-            break
-        time.sleep(0.05)
+    # Simple sleep + stop avoids invalid stream pointer on some ALSA setups.
+    time.sleep(expected_sec + 0.2)
+    sd.stop()
 
 def record_while_pressed(is_pressed_fn, samplerate: int = 16000, device: str | int | None = None) -> bytes:
     """
