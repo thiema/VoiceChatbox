@@ -54,16 +54,15 @@ class VoskSpeechRecognition:
             print(f"Lade Vosk-Modell von: {self.model_path}")
             stop_event = threading.Event()
 
-            def _spinner():
-                spinner = "|/-\\"
-                i = 0
+            def _progress():
+                expected_sec = 15.0
                 while not stop_event.is_set():
                     elapsed = time.time() - start_ts
-                    print(f"\rLade Vosk-Modell... {spinner[i % 4]} {elapsed:.1f}s", end="", flush=True)
-                    i += 1
+                    pct = min(int((elapsed / expected_sec) * 100), 99)
+                    print(f"\rLade Vosk-Modell... {pct}%", end="", flush=True)
                     time.sleep(0.2)
 
-            thread = threading.Thread(target=_spinner, daemon=True)
+            thread = threading.Thread(target=_progress, daemon=True)
             thread.start()
             model = Model(str(self.model_path))
             self.recognizer = model
