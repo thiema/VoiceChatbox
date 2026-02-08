@@ -5,7 +5,7 @@ import os
 import sys
 from dataclasses import dataclass
 from typing import Optional
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image
 
 from .utils_env import get_env_int, get_env_str
 
@@ -28,13 +28,13 @@ class OledConfig:
     text_dy: int
 
 def load_oled_config() -> OledConfig:
-    # Defaults tuned for SSD1306 128x64
-    driver = get_env_str("OLED_DRIVER", "ssd1306").lower()
+    # Defaults tuned to user's tested SH1106 0.91" panel
+    driver = get_env_str("OLED_DRIVER", "sh1106").lower()
     i2c_bus = get_env_int("OLED_I2C_BUS", 1)
     i2c_addr = int(os.getenv("OLED_I2C_ADDR", "0x3C"), 0)
 
     width = get_env_int("OLED_WIDTH", 128)
-    height = get_env_int("OLED_HEIGHT", 64)
+    height = get_env_int("OLED_HEIGHT", 32)
 
     font_path = get_env_str("OLED_FONT_PATH", DEFAULT_FONT_PATH)
     font_size = get_env_int("OLED_FONT_SIZE", 12)
@@ -74,19 +74,20 @@ class OledDisplay:
 
     def init(self) -> bool:
         try:
-            import board
-            import busio
-            import adafruit_ssd1306
+            from luma.core.interface.serial import i2c
+            from luma.oled.device import sh1106, ssd1306
+            from PIL import ImageFont
 
-            i2c = busio.I2C(board.SCL, board.SDA)
-            self.device = adafruit_ssd1306.SSD1306_I2C(
-                self.cfg.width, self.cfg.height, i2c, addr=self.cfg.i2c_addr
-            )
+            serial = i2c(port=self.cfg.i2c_bus, address=self.cfg.i2c_addr)
+            if self.cfg.driver == "sh1106":
+                self.device = sh1106(serial, width=self.cfg.width, height=self.cfg.height)
+            else:
+                self.device = ssd1306(serial, width=self.cfg.width, height=self.cfg.height)
+
             self.font = ImageFont.truetype(self.cfg.font_path, self.cfg.font_size)
             self.clear()
             return True
-        except Exception as e:
-            print(f"OLED init failed: {e}", file=sys.stderr)
+        except Exception:
             self.device = None
             self.font = None
             return False
@@ -102,26 +103,23 @@ class OledDisplay:
     def clear(self) -> None:
         if not self.device:
             return
-        image = Image.new("1", (self.device.width, self.device.height))
-        draw = ImageDraw.Draw(image)
-        draw.rectangle((0, 0, self.device.width, self.device.height), outline=0, fill=0)
-        self.device.image(image)
-        self.device.show()
+        from luma.core.render import canvas
+        with canvas(self.device) as draw:
+            draw.rectangle(self.device.bounding_box, outline="black", fill="black")
 
     def show_box_and_text(self, text: str) -> None:
         self._mirror_to_terminal(text)
         if not self.device or not self.font:
             return
+        from luma.core.render import canvas
         left, top, right, bottom = self._bounds()
         text_x = left + self.cfg.text_dx
         text_y = top + self.cfg.text_dy
-        image = Image.new("1", (self.device.width, self.device.height))
-        draw = ImageDraw.Draw(image)
-        draw.rectangle((0, 0, self.device.width, self.device.height), outline=0, fill=0)
-        draw.rectangle((left, top, right, bottom), outline=1, fill=0)
-        draw.text((text_x, text_y), text, font=self.font, fill=1)
-        self.device.image(image)
-        self.device.show()
+
+        with canvas(self.device) as draw:
+            draw.rectangle(self.device.bounding_box, outline="black", fill="black")
+            draw.rectangle((left, top, right, bottom), outline="white", fill="black")
+            draw.text((text_x, text_y), text, font=self.font, fill="white")
 
     def show_ready(self) -> None:
         self.show_box_and_text("Bereit")
@@ -181,13 +179,12 @@ class OledDisplay:
             x_offset = scroll_positions[current_pos]
             cropped = full_text_img.crop((x_offset, 0, x_offset + text_area_width, text_area_height))
             
-            image = Image.new("1", (self.device.width, self.device.height))
-            draw = ImageDraw.Draw(image)
-            draw.rectangle((0, 0, self.device.width, self.device.height), outline=0, fill=0)
-            draw.rectangle((left, top, right, bottom), outline=1, fill=0)
-            image.paste(cropped, (left, top))
-            self.device.image(image)
-            self.device.show()
+            from luma.core.render import canvas
+            with canvas(self.device) as draw:
+                draw.rectangle(self.device.bounding_box, outline="black", fill="black")
+                draw.rectangle((left, top, right, bottom), outline="white", fill="black")
+                # Zeige den aktuellen Ausschnitt
+                self.device.display(cropped)
     
     def show_text_scroll(self, text: str) -> None:
         """
