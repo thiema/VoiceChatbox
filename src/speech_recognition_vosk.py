@@ -170,6 +170,7 @@ class LiveVoskRecognition:
                  trivial_words: list[str] | None = None,
                  chat_filter_debug: bool = False,
                  chat_ignore_after_tts_sec: float = 2.0,
+                 auto_pause_after_sec: float = 10.0,
                  chat_assistant: Optional[ChatAssistant] = None):
         """
         Initialisiere Live-Vosk-Spracherkennung.
@@ -203,9 +204,11 @@ class LiveVoskRecognition:
         self.trivial_words = set(trivial_words or [])
         self.chat_filter_debug = chat_filter_debug
         self.chat_ignore_after_tts_sec = chat_ignore_after_tts_sec
+        self.auto_pause_after_sec = auto_pause_after_sec
         self._ignore_until = 0.0
         self._last_tts_text = ""
         self._pending_prefix = ""
+        self._last_activity_ts = time.time()
     
     def set_text_callback(self, callback: Callable[[str], None]) -> None:
         """Setze Callback-Funktion, die bei neuem Text aufgerufen wird."""
@@ -293,6 +296,8 @@ class LiveVoskRecognition:
         self._status_text = status_text
         self._update_display(status_text)
         print(f"STATUS: {status_text} ({reason})")
+        if active:
+            self._last_activity_ts = time.time()
 
     def _on_tts_done(self, text: str) -> None:
         self._last_tts_text = (text or "").strip().lower()
@@ -334,6 +339,7 @@ class LiveVoskRecognition:
             text = self.vosk.transcribe_audio_stream(audio_data)
             
             if text:
+                self._last_activity_ts = time.time()
                 # Stelle sicher, dass Text Leerzeichen hat
                 text = re.sub(r'\s+', ' ', text).strip()
 
@@ -470,6 +476,7 @@ class LiveVoskRecognition:
         self.listening_active = False
         self._paused_notice = False
         self._status_text = None
+        self._last_activity_ts = time.time()
 
         # Geräteauswahl anzeigen + Fallback
         self.vosk.device_id = select_input_device(self.vosk.device_spec, announce=True)
@@ -485,6 +492,9 @@ class LiveVoskRecognition:
         try:
             # Kontinuierliche Verarbeitung
             while self.is_running:
+                if self.listening_active and self.auto_pause_after_sec > 0:
+                    if (time.time() - self._last_activity_ts) >= self.auto_pause_after_sec:
+                        self._set_listening(False, "Inaktivität")
                 self._process_chunk()
         except KeyboardInterrupt:
             print("\nBeendet.")
@@ -553,6 +563,7 @@ def run_live_vosk_recognition(model_path: Optional[str] = None, enable_chatgpt: 
         trivial_words=settings.trivial_words,
         chat_filter_debug=settings.chat_filter_debug,
         chat_ignore_after_tts_sec=settings.chat_ignore_after_tts_sec,
+        auto_pause_after_sec=settings.auto_pause_after_sec,
         chat_assistant=chat_assistant,
     )
 

@@ -40,6 +40,7 @@ class Settings:
     trivial_words: list[str]
     chat_filter_debug: bool
     chat_ignore_after_tts_sec: float
+    auto_pause_after_sec: float
 
 def load_settings() -> Settings:
     key = os.getenv("OPENAI_API_KEY", "").strip()
@@ -52,6 +53,7 @@ def load_settings() -> Settings:
     trivial_words = [p.strip().lower() for p in os.getenv("TRIVIAL_WORDS", "").split(",") if p.strip()]
     chat_filter_debug = _get_bool("CHAT_FILTER_DEBUG", False)
     chat_ignore_after_tts_sec = float(os.getenv("CHAT_IGNORE_AFTER_TTS_SEC", "2.0"))
+    auto_pause_after_sec = float(os.getenv("AUTO_PAUSE_AFTER_SEC", "10"))
 
     return Settings(
         openai_api_key=key,
@@ -80,4 +82,5 @@ def load_settings() -> Settings:
         trivial_words=trivial_words,
         chat_filter_debug=chat_filter_debug,
         chat_ignore_after_tts_sec=chat_ignore_after_tts_sec,
+        auto_pause_after_sec=auto_pause_after_sec,
     )
