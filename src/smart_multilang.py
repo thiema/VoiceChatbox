@@ -516,6 +516,11 @@ class SmartMultiLanguageVoskRecognition:
                                     )
                                 elif self.chat_filter_debug:
                                     print(f"ChatGPT-Filter: '{sentence.text}' → blockiert ({reason})")
+
+                    # Nach vollständiger Frage Kontext zurücksetzen
+                    if any(info.get("type") == "question" for info in result.get("semantic_info", [])):
+                        self.current_text = ""
+                        self.semantic_processor.reset()
                 else:
                     # Standard: Einfache Text-Anzeige
                     self._update_display(self.current_text)
