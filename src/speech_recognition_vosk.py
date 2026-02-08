@@ -18,7 +18,7 @@ from .chat_assistant import ChatAssistant
 class VoskSpeechRecognition:
     """Lokale Spracherkennung mit Vosk (Deutsch)."""
     
-    def __init__(self, model_path: str, device: Optional[str | int] = None):
+    def __init__(self, model_path: str, device: Optional[str | int] = None, debug: bool = False):
         """
         Initialisiere Vosk-Spracherkennung.
         
@@ -31,6 +31,7 @@ class VoskSpeechRecognition:
         self.device_id = _resolve_device_id(device)
         self.samplerate = 16000
         self.recognizer = None
+        self.debug = debug
         self._init_model()
     
     def _init_model(self) -> None:
@@ -48,10 +49,12 @@ class VoskSpeechRecognition:
                     f"Empfohlen für Deutsch: vosk-model-de-0.22 (klein) oder vosk-model-de-0.6-900k (groß)"
                 )
             
+            start_ts = time.time()
             print(f"Lade Vosk-Modell von: {self.model_path}")
             model = Model(str(self.model_path))
             self.recognizer = model
-            print("Vosk-Modell geladen.")
+            elapsed = time.time() - start_ts
+            print(f"Vosk-Modell geladen. ({elapsed:.1f}s)")
         except ImportError:
             raise ImportError(
                 "Vosk ist nicht installiert. Bitte installieren mit:\n"
@@ -171,6 +174,7 @@ class LiveVoskRecognition:
                  chat_filter_debug: bool = False,
                  chat_ignore_after_tts_sec: float = 2.0,
                  auto_pause_after_sec: float = 10.0,
+                 debug_logs: bool = False,
                  chat_assistant: Optional[ChatAssistant] = None):
         """
         Initialisiere Live-Vosk-Spracherkennung.
@@ -183,7 +187,8 @@ class LiveVoskRecognition:
             enable_semantic: Semantische Satzerkennung aktivieren
             language: Sprache für semantische Analyse
         """
-        self.vosk = VoskSpeechRecognition(model_path, device)
+        self.debug_logs = debug_logs
+        self.vosk = VoskSpeechRecognition(model_path, device, debug=debug_logs)
         self.samplerate = 16000
         self.chunk_duration = chunk_duration  # Längere Chunks = besserer Kontext
         self.enable_audio_processing = enable_audio_processing
@@ -299,6 +304,11 @@ class LiveVoskRecognition:
         if active:
             self._last_activity_ts = time.time()
 
+    def _debug(self, msg: str) -> None:
+        if self.debug_logs:
+            ts = time.strftime("%H:%M:%S")
+            print(f"[DEBUG {ts}] {msg}")
+
     def _on_tts_done(self, text: str) -> None:
         self._last_tts_text = (text or "").strip().lower()
         self._ignore_until = time.time() + self.chat_ignore_after_tts_sec
@@ -325,7 +335,9 @@ class LiveVoskRecognition:
             # Während Ausgabe nichts aufnehmen
             wait_for_playback_end()
             # Audio aufnehmen
+            self._debug("record_chunk: start")
             audio_data = self._record_chunk()
+            self._debug(f"record_chunk: done len={len(audio_data)}")
             
             if not self.is_running:
                 return
@@ -333,10 +345,13 @@ class LiveVoskRecognition:
             # Voice Activity Detection - überspringe leise Chunks
             if not self._detect_speech(audio_data, threshold=0.005):
                 # Keine Sprache erkannt, überspringe
+                self._debug("vad: no speech")
                 return
             
             # Transkribieren (direkt mit numpy-Array)
+            self._debug("transcribe: start")
             text = self.vosk.transcribe_audio_stream(audio_data)
+            self._debug(f"transcribe: done text='{text}'")
             
             if text:
                 self._last_activity_ts = time.time()
@@ -358,13 +373,16 @@ class LiveVoskRecognition:
                 cmd = self._check_commands(text)
                 if cmd == "stop":
                     self._set_listening(False, "STOPP erkannt")
+                    self._debug("command: stop")
                     return
                 if cmd == "wake":
                     self._set_listening(True, "OK GOOGLE erkannt")
+                    self._debug("command: wake")
                     return
 
                 if not self.listening_active:
                     self._set_listening(False, "Warte auf Wake")
+                    self._debug("listening inactive: skip")
                     return
 
                 if self._pending_prefix:
@@ -564,6 +582,7 @@ def run_live_vosk_recognition(model_path: Optional[str] = None, enable_chatgpt: 
         chat_filter_debug=settings.chat_filter_debug,
         chat_ignore_after_tts_sec=settings.chat_ignore_after_tts_sec,
         auto_pause_after_sec=settings.auto_pause_after_sec,
+        debug_logs=settings.debug_logs,
         chat_assistant=chat_assistant,
     )
 

@@ -41,6 +41,7 @@ class Settings:
     chat_filter_debug: bool
     chat_ignore_after_tts_sec: float
     auto_pause_after_sec: float
+    debug_logs: bool
 
 def load_settings() -> Settings:
     key = os.getenv("OPENAI_API_KEY", "").strip()
@@ -54,6 +55,7 @@ def load_settings() -> Settings:
     chat_filter_debug = _get_bool("CHAT_FILTER_DEBUG", False)
     chat_ignore_after_tts_sec = float(os.getenv("CHAT_IGNORE_AFTER_TTS_SEC", "2.0"))
     auto_pause_after_sec = float(os.getenv("AUTO_PAUSE_AFTER_SEC", "10"))
+    debug_logs = _get_bool("DEBUG_LOGS", False)
 
     return Settings(
         openai_api_key=key,
@@ -83,4 +85,5 @@ def load_settings() -> Settings:
         chat_filter_debug=chat_filter_debug,
         chat_ignore_after_tts_sec=chat_ignore_after_tts_sec,
         auto_pause_after_sec=auto_pause_after_sec,
+        debug_logs=debug_logs,
     )
