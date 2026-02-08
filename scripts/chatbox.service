@@ -5,15 +5,15 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-WorkingDirectory=/home/pi/raspi-ai-chatbox-de
-EnvironmentFile=/home/pi/raspi-ai-chatbox-de/.env
-ExecStart=/home/pi/raspi-ai-chatbox-de/.venv/bin/python -m src.main
+WorkingDirectory=/home/marian/Projects/VoiceChatbox
+EnvironmentFile=/home/marian/Projects/VoiceChatbox/.env
+ExecStart=/home/marian/Projects/VoiceChatbox/.venv/bin/python -m src.main --live-recognition --vosk --chatgpt
 Restart=on-failure
 RestartSec=2
 
 # Audio permissions
-User=pi
-Group=pi
+User=marian
+Group=marian
 
 [Install]
 WantedBy=multi-user.target
