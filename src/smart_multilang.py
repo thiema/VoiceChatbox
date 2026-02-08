@@ -3,6 +3,7 @@ import io
 import wave
 import json
 import re
+import time
 import numpy as np
 import sounddevice as sd
 from typing import Callable, Optional, Dict, List, Tuple
@@ -31,6 +32,7 @@ class SmartMultiLanguageVoskRecognition:
                  min_chat_words: int = 2,
                  trivial_words: list[str] | None = None,
                  chat_filter_debug: bool = False,
+                 chat_ignore_after_tts_sec: float = 2.0,
                  chat_assistant: Optional[ChatAssistant] = None):
         """
         Initialisiere intelligente mehrsprachige Spracherkennung.
@@ -61,6 +63,9 @@ class SmartMultiLanguageVoskRecognition:
         self.min_chat_words = min_chat_words
         self.trivial_words = set(trivial_words or [])
         self.chat_filter_debug = chat_filter_debug
+        self.chat_ignore_after_tts_sec = chat_ignore_after_tts_sec
+        self._ignore_until = 0.0
+        self._last_tts_text = ""
         
         # Englische Wörter, die im deutschen Kontext verwendet werden
         self.english_words = {
@@ -314,6 +319,11 @@ class SmartMultiLanguageVoskRecognition:
         self._update_display(status_text)
         print(f"STATUS: {status_text} ({reason})")
 
+    def _on_tts_done(self, text: str) -> None:
+        self._last_tts_text = (text or "").strip().lower()
+        self._ignore_until = time.time() + self.chat_ignore_after_tts_sec
+        self._set_listening(False, "TTS fertig")
+
     @staticmethod
     def _normalize_command_text(text: str) -> str:
         text = (text or "").lower()
@@ -369,6 +379,10 @@ class SmartMultiLanguageVoskRecognition:
             text = self._merge_texts(text_de, text_en)
             
             if text:
+                if time.time() < self._ignore_until:
+                    if self.chat_filter_debug:
+                        print("ChatGPT-Filter: blockiert (nach TTS)")
+                    return
                 if not self._should_process_text(text):
                     return
                 # Stelle sicher, dass Text Leerzeichen hat
@@ -558,11 +572,12 @@ def run_smart_multilang_recognition(
         min_chat_words=settings.min_chat_words,
         trivial_words=settings.trivial_words,
         chat_filter_debug=settings.chat_filter_debug,
+        chat_ignore_after_tts_sec=settings.chat_ignore_after_tts_sec,
         chat_assistant=chat_assistant,
     )
 
     if chat_assistant and hasattr(chat_assistant, "set_on_tts_done"):
-        chat_assistant.set_on_tts_done(lambda: recognizer._set_listening(False, "TTS fertig"))
+        chat_assistant.set_on_tts_done(recognizer._on_tts_done)
     
     # OLED initialisieren
     oled = None

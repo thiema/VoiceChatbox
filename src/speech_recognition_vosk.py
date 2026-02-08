@@ -3,6 +3,7 @@ import io
 import wave
 import json
 import re
+import time
 import numpy as np
 import sounddevice as sd
 from typing import Callable, Optional
@@ -168,6 +169,7 @@ class LiveVoskRecognition:
                  min_chat_words: int = 2,
                  trivial_words: list[str] | None = None,
                  chat_filter_debug: bool = False,
+                 chat_ignore_after_tts_sec: float = 2.0,
                  chat_assistant: Optional[ChatAssistant] = None):
         """
         Initialisiere Live-Vosk-Spracherkennung.
@@ -200,6 +202,10 @@ class LiveVoskRecognition:
         self.min_chat_words = min_chat_words
         self.trivial_words = set(trivial_words or [])
         self.chat_filter_debug = chat_filter_debug
+        self.chat_ignore_after_tts_sec = chat_ignore_after_tts_sec
+        self._ignore_until = 0.0
+        self._last_tts_text = ""
+        self._pending_prefix = ""
     
     def set_text_callback(self, callback: Callable[[str], None]) -> None:
         """Setze Callback-Funktion, die bei neuem Text aufgerufen wird."""
@@ -288,6 +294,11 @@ class LiveVoskRecognition:
         self._update_display(status_text)
         print(f"STATUS: {status_text} ({reason})")
 
+    def _on_tts_done(self, text: str) -> None:
+        self._last_tts_text = (text or "").strip().lower()
+        self._ignore_until = time.time() + self.chat_ignore_after_tts_sec
+        self._set_listening(False, "TTS fertig")
+
     @staticmethod
     def _normalize_command_text(text: str) -> str:
         text = (text or "").lower()
@@ -326,6 +337,18 @@ class LiveVoskRecognition:
                 # Stelle sicher, dass Text Leerzeichen hat
                 text = re.sub(r'\s+', ' ', text).strip()
 
+                now = time.time()
+                if now < self._ignore_until:
+                    if self.chat_filter_debug:
+                        print("ChatGPT-Filter: blockiert (nach TTS)")
+                    return
+                norm_text = self._normalize_command_text(text)
+                if self._last_tts_text and norm_text:
+                    if norm_text in self._last_tts_text or self._last_tts_text in norm_text:
+                        if self.chat_filter_debug:
+                            print("ChatGPT-Filter: blockiert (Echo von TTS)")
+                        return
+
                 cmd = self._check_commands(text)
                 if cmd == "stop":
                     self._set_listening(False, "STOPP erkannt")
@@ -337,6 +360,10 @@ class LiveVoskRecognition:
                 if not self.listening_active:
                     self._set_listening(False, "Warte auf Wake")
                     return
+
+                if self._pending_prefix:
+                    text = f"{self._pending_prefix} {text}".strip()
+                    self._pending_prefix = ""
                 
                 # Prüfe, ob Text bereits vorhanden ist (verhindert Doppel-Ausgabe)
                 if self.current_text and text.lower() in self.current_text.lower():
@@ -397,8 +424,10 @@ class LiveVoskRecognition:
                                 )
                                 if allowed:
                                     self.chat_assistant.handle_text(sentence.text)
-                                elif self.chat_filter_debug:
-                                    print(f"ChatGPT-Filter: '{sentence.text}' → blockiert ({reason})")
+                                else:
+                                    self._pending_prefix = sentence.text
+                                    if self.chat_filter_debug:
+                                        print(f"ChatGPT-Filter: '{sentence.text}' → blockiert ({reason})")
                 else:
                     # Standard: Einfache Text-Anzeige (ohne Korrektur)
                     if self.current_text:
@@ -416,8 +445,10 @@ class LiveVoskRecognition:
                             if allowed:
                                 self._last_chat_text = text
                                 self.chat_assistant.handle_text(text)
-                            elif self.chat_filter_debug:
-                                print(f"ChatGPT-Filter: '{text}' → blockiert ({reason})")
+                            else:
+                                self._pending_prefix = text
+                                if self.chat_filter_debug:
+                                    print(f"ChatGPT-Filter: '{text}' → blockiert ({reason})")
                 
                 # Callback aufrufen
                 if self.text_callback:
@@ -521,11 +552,12 @@ def run_live_vosk_recognition(model_path: Optional[str] = None, enable_chatgpt: 
         min_chat_words=settings.min_chat_words,
         trivial_words=settings.trivial_words,
         chat_filter_debug=settings.chat_filter_debug,
+        chat_ignore_after_tts_sec=settings.chat_ignore_after_tts_sec,
         chat_assistant=chat_assistant,
     )
 
     if chat_assistant and hasattr(chat_assistant, "set_on_tts_done"):
-        chat_assistant.set_on_tts_done(lambda: recognizer._set_listening(False, "TTS fertig"))
+        chat_assistant.set_on_tts_done(recognizer._on_tts_done)
     
     recognizer.start(oled=oled)
 

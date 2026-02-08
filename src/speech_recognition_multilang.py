@@ -3,6 +3,7 @@ import io
 import wave
 import json
 import re
+import time
 import numpy as np
 import sounddevice as sd
 from typing import Callable, Optional, Dict, List, Tuple
@@ -170,6 +171,7 @@ class LiveMultiLanguageVoskRecognition:
                  min_chat_words: int = 2,
                  trivial_words: list[str] | None = None,
                  chat_filter_debug: bool = False,
+                 chat_ignore_after_tts_sec: float = 2.0,
                  chat_assistant: Optional[ChatAssistant] = None):
         """
         Initialisiere Live mehrsprachige Spracherkennung.
@@ -198,6 +200,9 @@ class LiveMultiLanguageVoskRecognition:
         self.min_chat_words = min_chat_words
         self.trivial_words = set(trivial_words or [])
         self.chat_filter_debug = chat_filter_debug
+        self.chat_ignore_after_tts_sec = chat_ignore_after_tts_sec
+        self._ignore_until = 0.0
+        self._last_tts_text = ""
     
     def set_text_callback(self, callback: Callable[[str], None]) -> None:
         """Setze Callback-Funktion, die bei neuem Text aufgerufen wird."""
@@ -248,6 +253,11 @@ class LiveMultiLanguageVoskRecognition:
         self._update_display(status_text)
         print(f"STATUS: {status_text} ({reason})")
 
+    def _on_tts_done(self, text: str) -> None:
+        self._last_tts_text = (text or "").strip().lower()
+        self._ignore_until = time.time() + self.chat_ignore_after_tts_sec
+        self._set_listening(False, "TTS fertig")
+
     @staticmethod
     def _normalize_command_text(text: str) -> str:
         text = (text or "").lower()
@@ -292,6 +302,10 @@ class LiveMultiLanguageVoskRecognition:
             if self.mode == "best":
                 lang, text = self.vosk.transcribe_audio_best(wav_bytes)
                 if text:
+                    if time.time() < self._ignore_until:
+                        if self.chat_filter_debug:
+                            print("ChatGPT-Filter: blockiert (nach TTS)")
+                        return
                     if not self._should_process_text(text):
                         return
                     if self.current_text:
@@ -312,6 +326,10 @@ class LiveMultiLanguageVoskRecognition:
             elif self.mode == "combined":
                 text = self.vosk.transcribe_audio_combined(wav_bytes)
                 if text:
+                    if time.time() < self._ignore_until:
+                        if self.chat_filter_debug:
+                            print("ChatGPT-Filter: blockiert (nach TTS)")
+                        return
                     if not self._should_process_text(text):
                         return
                     if self.current_text:
@@ -337,6 +355,10 @@ class LiveMultiLanguageVoskRecognition:
                     # Verwende das beste Ergebnis für Display
                     best_lang = max(results.keys(), key=lambda k: len(results[k]))
                     text = results[best_lang]
+                    if time.time() < self._ignore_until:
+                        if self.chat_filter_debug:
+                            print("ChatGPT-Filter: blockiert (nach TTS)")
+                        return
                     if text and not self._should_process_text(text):
                         return
                     if self.current_text:
@@ -477,11 +499,12 @@ def run_multilang_vosk_recognition(
         min_chat_words=settings.min_chat_words,
         trivial_words=settings.trivial_words,
         chat_filter_debug=settings.chat_filter_debug,
+        chat_ignore_after_tts_sec=settings.chat_ignore_after_tts_sec,
         chat_assistant=chat_assistant,
     )
 
     if chat_assistant and hasattr(chat_assistant, "set_on_tts_done"):
-        chat_assistant.set_on_tts_done(lambda: recognizer._set_listening(False, "TTS fertig"))
+        chat_assistant.set_on_tts_done(recognizer._on_tts_done)
     
     recognizer.start(oled=oled)
 
