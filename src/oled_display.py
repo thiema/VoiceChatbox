@@ -108,6 +108,7 @@ class OledDisplay:
         self.device.show()
 
     def show_box_and_text(self, text: str) -> None:
+        self._mirror_to_terminal(text)
         if not self.device or not self.font:
             return
         left, top, right, bottom = self._bounds()
