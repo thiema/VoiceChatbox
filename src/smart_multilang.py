@@ -51,6 +51,7 @@ class SmartMultiLanguageVoskRecognition:
         self._last_chat_text: Optional[str] = None
         self.listening_active = False
         self._paused_notice = False
+        self._status_text: Optional[str] = None
         self.wake_phrases = wake_phrases or ("ok google", "okay google")
         self.stop_phrases = stop_phrases or ("stopp", "stop")
         
@@ -296,6 +297,16 @@ class SmartMultiLanguageVoskRecognition:
         if self.oled and self.oled.device:
             self.oled.show_text_scroll(text)
 
+    def _set_listening(self, active: bool, reason: str) -> None:
+        status_text = "BEREIT" if active else "PAUSE"
+        if self.listening_active == active and self._status_text == status_text:
+            return
+        self.listening_active = active
+        self._paused_notice = not active
+        self._status_text = status_text
+        self._update_display(status_text)
+        print(f"STATUS: {status_text} ({reason})")
+
     @staticmethod
     def _normalize_command_text(text: str) -> str:
         text = (text or "").lower()
@@ -313,21 +324,13 @@ class SmartMultiLanguageVoskRecognition:
     def _should_process_text(self, text: str) -> bool:
         cmd = self._check_commands(text)
         if cmd == "stop":
-            self.listening_active = False
-            self._paused_notice = True
-            self._update_display("PAUSE")
-            print("⏸️  STOPP erkannt. Aufnahme deaktiviert.")
+            self._set_listening(False, "STOPP erkannt")
             return False
         if cmd == "wake":
-            self.listening_active = True
-            self._paused_notice = False
-            self._update_display("BEREIT")
-            print("🎤 OK GOOGLE erkannt. Aufnahme aktiviert.")
+            self._set_listening(True, "OK GOOGLE erkannt")
             return False
         if not self.listening_active:
-            if not self._paused_notice:
-                self._paused_notice = True
-                self._update_display("PAUSE")
+            self._set_listening(False, "Warte auf Wake")
             return False
         return True
     
@@ -457,12 +460,15 @@ class SmartMultiLanguageVoskRecognition:
         self.last_processed_length = 0
         self.listening_active = False
         self._paused_notice = False
+        self._status_text = None
 
         # Geräteauswahl anzeigen + Fallback
         self.device_id = select_input_device(self.device_spec, announce=True)
         
         if self.oled:
             self.oled.show_listening()
+
+        self._set_listening(False, "Start")
         
         print("="*60)
         print("Intelligente mehrsprachige Spracherkennung (DE + EN)")
@@ -487,6 +493,7 @@ class SmartMultiLanguageVoskRecognition:
         self.is_running = False
         self.listening_active = False
         self._paused_notice = False
+        self._status_text = None
         if self.oled:
             self.oled.clear()
         print("Spracherkennung gestoppt.")
@@ -530,6 +537,9 @@ def run_smart_multilang_recognition(
         stop_phrases=tuple(settings.stop_phrases),
         chat_assistant=chat_assistant,
     )
+
+    if chat_assistant:
+        chat_assistant.set_on_tts_done(lambda: recognizer._set_listening(False, "TTS fertig"))
     
     # OLED initialisieren
     oled = None
