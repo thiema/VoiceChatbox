@@ -15,21 +15,28 @@ DEFAULT_TRIVIAL_WORDS = {
     "please", "thanks", "well", "um", "uh", "etc",
 }
 
+def chatgpt_filter_decision(
+    text: str,
+    min_words: int = 2,
+    trivial_words: set[str] | None = None,
+) -> tuple[bool, str | None]:
+    """Return (allowed, reason). Reason is set when filtered."""
+    if not text:
+        return False, "leer"
+    tokens = re.findall(r"\b\w+\b", text.lower())
+    if len(tokens) < min_words:
+        return False, f"zu_kurz(<{min_words} Wörter)"
+    trivial = trivial_words or DEFAULT_TRIVIAL_WORDS
+    if tokens and all(t in trivial for t in tokens):
+        return False, "trivial_wörter"
+    return True, None
+
 def should_send_to_chatgpt(
     text: str,
     min_words: int = 2,
     trivial_words: set[str] | None = None,
 ) -> bool:
-    """Filter trivial/fragmentary utterances before sending to ChatGPT."""
-    if not text:
-        return False
-    tokens = re.findall(r"\b\w+\b", text.lower())
-    if len(tokens) < min_words:
-        return False
-    trivial = trivial_words or DEFAULT_TRIVIAL_WORDS
-    if all(t in trivial for t in tokens):
-        return False
-    return True
+    return chatgpt_filter_decision(text, min_words, trivial_words)[0]
 
 
 @dataclass

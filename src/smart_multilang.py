@@ -10,7 +10,7 @@ from pathlib import Path
 
 from .audio_io import _resolve_device_id, select_input_device, wait_for_playback_end
 from .chat_assistant import ChatAssistant
-from .sentence_detection import should_send_to_chatgpt
+from .sentence_detection import should_send_to_chatgpt, chatgpt_filter_decision
 from .oled_display import OledDisplay
 from .sentence_detection import SemanticSpeechRecognition
 
@@ -30,6 +30,7 @@ class SmartMultiLanguageVoskRecognition:
                  stop_phrases: tuple[str, ...] | None = None,
                  min_chat_words: int = 2,
                  trivial_words: list[str] | None = None,
+                 chat_filter_debug: bool = False,
                  chat_assistant: Optional[ChatAssistant] = None):
         """
         Initialisiere intelligente mehrsprachige Spracherkennung.
@@ -59,6 +60,7 @@ class SmartMultiLanguageVoskRecognition:
         self.stop_phrases = stop_phrases or ("stopp", "stop")
         self.min_chat_words = min_chat_words
         self.trivial_words = set(trivial_words or [])
+        self.chat_filter_debug = chat_filter_debug
         
         # Englische Wörter, die im deutschen Kontext verwendet werden
         self.english_words = {
@@ -437,17 +439,26 @@ class SmartMultiLanguageVoskRecognition:
                     if self.chat_assistant:
                         for sentence in result.get("new_sentences", []):
                             if sentence and sentence.text:
-                                if should_send_to_chatgpt(sentence.text, self.min_chat_words, self.trivial_words):
+                                allowed, reason = chatgpt_filter_decision(
+                                    sentence.text, self.min_chat_words, self.trivial_words
+                                )
+                                if allowed:
                                     self.chat_assistant.handle_text(sentence.text)
+                                elif self.chat_filter_debug:
+                                    print(f"ChatGPT-Filter: '{sentence.text}' → blockiert ({reason})")
                 else:
                     # Standard: Einfache Text-Anzeige
                     self._update_display(self.current_text)
 
-                    if self.chat_assistant and self._last_chat_text != text and should_send_to_chatgpt(
-                        text, self.min_chat_words, self.trivial_words
-                    ):
-                        self._last_chat_text = text
-                        self.chat_assistant.handle_text(text)
+                    if self.chat_assistant and self._last_chat_text != text:
+                        allowed, reason = chatgpt_filter_decision(
+                            text, self.min_chat_words, self.trivial_words
+                        )
+                        if allowed:
+                            self._last_chat_text = text
+                            self.chat_assistant.handle_text(text)
+                        elif self.chat_filter_debug:
+                            print(f"ChatGPT-Filter: '{text}' → blockiert ({reason})")
                 
                 # Callback aufrufen
                 if self.text_callback:
@@ -546,6 +557,7 @@ def run_smart_multilang_recognition(
         stop_phrases=tuple(settings.stop_phrases),
         min_chat_words=settings.min_chat_words,
         trivial_words=settings.trivial_words,
+        chat_filter_debug=settings.chat_filter_debug,
         chat_assistant=chat_assistant,
     )
 
