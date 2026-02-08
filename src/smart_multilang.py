@@ -66,6 +66,7 @@ class SmartMultiLanguageVoskRecognition:
         self.chat_ignore_after_tts_sec = chat_ignore_after_tts_sec
         self._ignore_until = 0.0
         self._last_tts_text = ""
+        self._pending_prefix = ""
         
         # Englische Wörter, die im deutschen Kontext verwendet werden
         self.english_words = {
@@ -379,6 +380,9 @@ class SmartMultiLanguageVoskRecognition:
             text = self._merge_texts(text_de, text_en)
             
             if text:
+                if self._pending_prefix:
+                    text = f"{self._pending_prefix} {text}".strip()
+                    self._pending_prefix = ""
                 if time.time() < self._ignore_until:
                     if self.chat_filter_debug:
                         print("ChatGPT-Filter: blockiert (nach TTS)")
@@ -473,6 +477,8 @@ class SmartMultiLanguageVoskRecognition:
                             self.chat_assistant.handle_text(text)
                         elif self.chat_filter_debug:
                             print(f"ChatGPT-Filter: '{text}' → blockiert ({reason})")
+                        else:
+                            self._pending_prefix = text
                 
                 # Callback aufrufen
                 if self.text_callback:

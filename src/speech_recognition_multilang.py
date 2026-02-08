@@ -203,6 +203,7 @@ class LiveMultiLanguageVoskRecognition:
         self.chat_ignore_after_tts_sec = chat_ignore_after_tts_sec
         self._ignore_until = 0.0
         self._last_tts_text = ""
+        self._pending_prefix = ""
     
     def set_text_callback(self, callback: Callable[[str], None]) -> None:
         """Setze Callback-Funktion, die bei neuem Text aufgerufen wird."""
@@ -308,6 +309,9 @@ class LiveMultiLanguageVoskRecognition:
                         return
                     if not self._should_process_text(text):
                         return
+                    if self._pending_prefix:
+                        text = f"{self._pending_prefix} {text}".strip()
+                        self._pending_prefix = ""
                     if self.current_text:
                         self.current_text += " " + text
                     else:
@@ -322,6 +326,8 @@ class LiveMultiLanguageVoskRecognition:
                             self.chat_assistant.handle_text(text)
                         elif self.chat_filter_debug:
                             print(f"ChatGPT-Filter: '{text}' → blockiert ({reason})")
+                        else:
+                            self._pending_prefix = text
             
             elif self.mode == "combined":
                 text = self.vosk.transcribe_audio_combined(wav_bytes)
@@ -332,6 +338,9 @@ class LiveMultiLanguageVoskRecognition:
                         return
                     if not self._should_process_text(text):
                         return
+                    if self._pending_prefix:
+                        text = f"{self._pending_prefix} {text}".strip()
+                        self._pending_prefix = ""
                     if self.current_text:
                         self.current_text += " " + text
                     else:
@@ -346,6 +355,8 @@ class LiveMultiLanguageVoskRecognition:
                             self.chat_assistant.handle_text(text)
                         elif self.chat_filter_debug:
                             print(f"ChatGPT-Filter: '{text}' → blockiert ({reason})")
+                        else:
+                            self._pending_prefix = text
             
             elif self.mode == "all":
                 results = self.vosk.transcribe_audio(wav_bytes)
@@ -361,6 +372,9 @@ class LiveMultiLanguageVoskRecognition:
                         return
                     if text and not self._should_process_text(text):
                         return
+                    if self._pending_prefix:
+                        text = f"{self._pending_prefix} {text}".strip()
+                        self._pending_prefix = ""
                     if self.current_text:
                         self.current_text += " " + text
                     else:
@@ -374,6 +388,8 @@ class LiveMultiLanguageVoskRecognition:
                             self.chat_assistant.handle_text(text)
                         elif self.chat_filter_debug:
                             print(f"ChatGPT-Filter: '{text}' → blockiert ({reason})")
+                        else:
+                            self._pending_prefix = text
             
             if self.current_text:
                 self._update_display(self.current_text)
