@@ -10,7 +10,7 @@ from typing import Callable, Optional
 from openai import OpenAI
 
 from .config import load_settings
-from .audio_io import _resolve_device_id, select_input_device, wait_for_playback_end, is_playback_active
+from .audio_io import _resolve_device_id, select_input_device, wait_for_playback_end, is_playback_active, play_beep_sequence, play_hangup_tone
 from .oled_display import OledDisplay
 from .sentence_detection import SemanticSpeechRecognition, should_send_to_chatgpt, chatgpt_filter_decision
 from .chat_assistant import ChatAssistant
@@ -30,6 +30,7 @@ class LiveSpeechRecognition:
                  chat_ignore_after_tts_sec: float = 2.0,
                  auto_pause_after_sec: float = 10.0,
                  debug_logs: bool = False,
+                 audio_output_device: str | int | None = None,
                  chat_assistant: Optional[ChatAssistant] = None):
         self.client = client
         self.model_stt = model_stt
@@ -67,6 +68,7 @@ class LiveSpeechRecognition:
         self.chat_ignore_after_tts_sec = chat_ignore_after_tts_sec
         self.auto_pause_after_sec = auto_pause_after_sec
         self.debug_logs = debug_logs
+        self.audio_output_device = audio_output_device
         self._ignore_until = 0.0
         self._last_tts_text = ""
         self._pending_prefix = ""
@@ -134,6 +136,7 @@ class LiveSpeechRecognition:
 
     def _set_listening(self, active: bool, reason: str) -> None:
         status_text = "BEREIT" if active else "PAUSE"
+        prev_active = self.listening_active
         if self.listening_active == active and self._status_text == status_text:
             return
         self.listening_active = active
@@ -144,6 +147,9 @@ class LiveSpeechRecognition:
         print(f"STATUS: {status_text} ({reason})")
         if active:
             self._last_activity_ts = time.time()
+            play_beep_sequence(device=self.audio_output_device, announce=False)
+        elif prev_active and not active:
+            play_hangup_tone(device=self.audio_output_device, announce=False)
 
     def _debug(self, msg: str) -> None:
         if self.debug_logs:
@@ -475,6 +481,7 @@ def run_live_recognition(enable_chatgpt: bool = False):
         chat_ignore_after_tts_sec=settings.chat_ignore_after_tts_sec,
         auto_pause_after_sec=settings.auto_pause_after_sec,
         debug_logs=settings.debug_logs,
+        audio_output_device=settings.audio_output_device,
         chat_assistant=chat_assistant,
     )
 

@@ -261,6 +261,74 @@ def play_wav_bytes(wav_bytes: bytes, device: str | int | None = None, announce: 
         stream.stop()
         stream.close()
 
+def _tone_wav_bytes(
+    frequency: float = 880.0,
+    duration_sec: float = 0.08,
+    samplerate: int = 48000,
+    volume: float = 0.2,
+) -> bytes:
+    """Generate a short sine beep as WAV bytes."""
+    t = np.linspace(0, duration_sec, int(samplerate * duration_sec), endpoint=False)
+    wave_data = np.sin(2 * np.pi * frequency * t) * volume
+    # Apply short fade-in/out to avoid clicks
+    fade_len = max(1, int(0.005 * samplerate))
+    fade = np.linspace(0, 1, fade_len)
+    wave_data[:fade_len] *= fade
+    wave_data[-fade_len:] *= fade[::-1]
+    audio = (wave_data * 32767.0).astype(np.int16)
+
+    buf = io.BytesIO()
+    with wave.open(buf, "wb") as wf:
+        wf.setnchannels(1)
+        wf.setsampwidth(2)
+        wf.setframerate(samplerate)
+        wf.writeframes(audio.tobytes())
+    return buf.getvalue()
+
+def play_beep_sequence(
+    count: int = 2,
+    gap_sec: float = 0.06,
+    frequency: float = 880.0,
+    duration_sec: float = 0.08,
+    volume: float = 0.2,
+    device: str | int | None = None,
+    announce: bool = False,
+) -> None:
+    """Play a short double-beep sequence."""
+    if count <= 0:
+        return
+    beep = _tone_wav_bytes(
+        frequency=frequency,
+        duration_sec=duration_sec,
+        volume=volume,
+    )
+    for i in range(count):
+        play_wav_bytes(beep, device=device, announce=announce)
+        if i < count - 1:
+            time.sleep(gap_sec)
+
+def play_hangup_tone(device: str | int | None = None, announce: bool = False) -> None:
+    """Play a short descending tone (MS Teams-like hangup)."""
+    play_beep_sequence(
+        count=1,
+        gap_sec=0.0,
+        frequency=740.0,
+        duration_sec=0.08,
+        volume=0.18,
+        device=device,
+        announce=announce,
+    )
+    time.sleep(0.04)
+    play_beep_sequence(
+        count=1,
+        gap_sec=0.0,
+        frequency=520.0,
+        duration_sec=0.1,
+        volume=0.18,
+        device=device,
+        announce=announce,
+    )
+
 def record_while_pressed(is_pressed_fn, samplerate: int = 16000, device: str | int | None = None) -> bytes:
     """
     Record mono audio until is_pressed_fn() becomes False. Returns WAV bytes.
