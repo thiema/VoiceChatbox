@@ -187,20 +187,49 @@ def play_wav_bytes(wav_bytes: bytes, device: str | int | None = None, announce: 
     if channels > 1:
         audio = audio.reshape(-1, channels)
 
-    # If the device rejects the sample rate, resample to its default.
+    dev_info = None
     try:
-        sd.check_output_settings(device=device_id, samplerate=samplerate, channels=channels, dtype="int16")
-        target_sr = samplerate
-    except sd.PortAudioError:
-        try:
+        if device_id is not None:
             dev_info = sd.query_devices(device_id)
-            target_sr = int(dev_info.get("default_samplerate") or 48000)
-        except Exception:
-            target_sr = 48000
+    except Exception:
+        dev_info = None
+
+    target_channels = channels
+    if dev_info and channels == 1 and dev_info.get("max_output_channels", 0) >= 2:
+        target_channels = 2
+
+    # If the device rejects the sample rate, resample to a supported rate.
+    target_sr = samplerate
+    try:
+        sd.check_output_settings(
+            device=device_id,
+            samplerate=target_sr,
+            channels=target_channels,
+            dtype="int16",
+        )
+    except sd.PortAudioError:
+        default_sr = int((dev_info or {}).get("default_samplerate") or 48000)
+        for sr in (default_sr, 48000, 44100):
+            try:
+                sd.check_output_settings(
+                    device=device_id,
+                    samplerate=sr,
+                    channels=target_channels,
+                    dtype="int16",
+                )
+                target_sr = sr
+                break
+            except sd.PortAudioError:
+                continue
+        else:
+            target_sr = default_sr
 
     if target_sr != samplerate and audio.size > 0:
         # Resample using polyphase filtering for quality.
         audio = resample_poly(audio, target_sr, samplerate, axis=0).astype(np.int16)
+
+    if target_channels == 2 and channels == 1 and audio.size > 0:
+        audio = np.column_stack([audio, audio])
 
     sd.play(audio, samplerate=target_sr, device=device_id)
     sd.wait()
