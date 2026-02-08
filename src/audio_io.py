@@ -303,7 +303,11 @@ def play_beep_sequence(
         volume=volume,
     )
     for i in range(count):
-        play_wav_bytes(beep, device=device, announce=announce)
+        try:
+            play_wav_bytes(beep, device=device, announce=announce)
+        except Exception as e:
+            print(f"Beep-Fehler: {e}", file=sys.stderr)
+            break
         if i < count - 1:
             time.sleep(gap_sec)
 

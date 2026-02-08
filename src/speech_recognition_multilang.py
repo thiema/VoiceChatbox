@@ -366,6 +366,8 @@ class LiveMultiLanguageVoskRecognition:
                         )
                         if allowed:
                             self._last_chat_text = text
+                            if self.debug_logs:
+                                print(f"[DEBUG] prompt=NEW" if not self.context_mode else "[DEBUG] prompt=KONTEXT")
                             self.chat_assistant.handle_text(
                                 text,
                                 system_prompt_override=self._current_prompt(),
@@ -403,6 +405,8 @@ class LiveMultiLanguageVoskRecognition:
                         )
                         if allowed:
                             self._last_chat_text = text
+                            if self.debug_logs:
+                                print(f"[DEBUG] prompt=NEW" if not self.context_mode else "[DEBUG] prompt=KONTEXT")
                             self.chat_assistant.handle_text(
                                 text,
                                 system_prompt_override=self._current_prompt(),
@@ -444,6 +448,8 @@ class LiveMultiLanguageVoskRecognition:
                         )
                         if allowed:
                             self._last_chat_text = text
+                            if self.debug_logs:
+                                print(f"[DEBUG] prompt=NEW" if not self.context_mode else "[DEBUG] prompt=KONTEXT")
                             self.chat_assistant.handle_text(
                                 text,
                                 system_prompt_override=self._current_prompt(),

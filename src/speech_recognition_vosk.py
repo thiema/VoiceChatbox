@@ -488,6 +488,8 @@ class LiveVoskRecognition:
                                     sentence.text, self.min_chat_words, self.trivial_words
                                 )
                                 if allowed:
+                                    if self.debug_logs:
+                                        print(f"[DEBUG] prompt=NEW" if not self.context_mode else "[DEBUG] prompt=KONTEXT")
                                     self.chat_assistant.handle_text(
                                         sentence.text,
                                         system_prompt_override=self._current_prompt(),
@@ -496,6 +498,11 @@ class LiveVoskRecognition:
                                     self._pending_prefix = sentence.text
                                     if self.chat_filter_debug:
                                         print(f"ChatGPT-Filter: '{sentence.text}' → blockiert ({reason})")
+
+                    # Nach vollständiger Frage Kontext zurücksetzen
+                    if any(info.get("type") == "question" for info in result.get("semantic_info", [])):
+                        self.current_text = ""
+                        self.semantic_processor.reset()
                 else:
                     # Standard: Einfache Text-Anzeige (ohne Korrektur)
                     if self.current_text:
@@ -512,6 +519,8 @@ class LiveVoskRecognition:
                             )
                             if allowed:
                                 self._last_chat_text = text
+                                if self.debug_logs:
+                                    print(f"[DEBUG] prompt=NEW" if not self.context_mode else "[DEBUG] prompt=KONTEXT")
                                 self.chat_assistant.handle_text(
                                     text,
                                     system_prompt_override=self._current_prompt(),
