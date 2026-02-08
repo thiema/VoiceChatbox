@@ -502,7 +502,7 @@ def run_live_vosk_recognition(model_path: Optional[str] = None, enable_chatgpt: 
         chat_assistant=chat_assistant,
     )
 
-    if chat_assistant:
+    if chat_assistant and hasattr(chat_assistant, "set_on_tts_done"):
         chat_assistant.set_on_tts_done(lambda: recognizer._set_listening(False, "TTS fertig"))
     
     recognizer.start(oled=oled)

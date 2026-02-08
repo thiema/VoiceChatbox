@@ -538,7 +538,7 @@ def run_smart_multilang_recognition(
         chat_assistant=chat_assistant,
     )
 
-    if chat_assistant:
+    if chat_assistant and hasattr(chat_assistant, "set_on_tts_done"):
         chat_assistant.set_on_tts_done(lambda: recognizer._set_listening(False, "TTS fertig"))
     
     # OLED initialisieren

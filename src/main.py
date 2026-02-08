@@ -5,6 +5,7 @@ from time import sleep
 from openai import OpenAI
 
 from .config import load_settings
+from . import __version__
 from .gpio_inputs import PushToTalk
 from .led_status import LedStatus, Status
 from .audio_io import record_while_pressed, play_wav_bytes
@@ -133,6 +134,10 @@ def _select_mode_by_voice(client: OpenAI, settings, ptt: PushToTalk, leds: LedSt
     return "chatbox"
 
 def main():
+    if "--version" in sys.argv:
+        print(f"VoiceChatbox Version: {__version__}")
+        return
+
     if "--test-leds" in sys.argv:
         test_leds()
         return
@@ -221,6 +226,7 @@ def main():
             forced_mode = None
 
     settings = load_settings()
+    print(f"VoiceChatbox Version: {__version__}")
     # Optional OLED Statusanzeige
     oled = None
     try:

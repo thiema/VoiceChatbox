@@ -394,7 +394,7 @@ def run_live_recognition(enable_chatgpt: bool = False):
         chat_assistant=chat_assistant,
     )
 
-    if chat_assistant:
+    if chat_assistant and hasattr(chat_assistant, "set_on_tts_done"):
         chat_assistant.set_on_tts_done(lambda: recognizer._set_listening(False, "TTS fertig"))
     
     recognizer.start(oled=oled)
