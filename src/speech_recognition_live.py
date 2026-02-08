@@ -24,6 +24,8 @@ class LiveSpeechRecognition:
                  pause_duration: float | None = None,
                  wake_phrases: tuple[str, ...] | None = None,
                  stop_phrases: tuple[str, ...] | None = None,
+                 min_chat_words: int = 2,
+                 trivial_words: list[str] | None = None,
                  chat_assistant: Optional[ChatAssistant] = None):
         self.client = client
         self.model_stt = model_stt
@@ -55,6 +57,8 @@ class LiveSpeechRecognition:
         self._status_text: Optional[str] = None
         self.wake_phrases = wake_phrases or ("ok google", "okay google")
         self.stop_phrases = stop_phrases or ("stopp", "stop")
+        self.min_chat_words = min_chat_words
+        self.trivial_words = set(trivial_words or [])
         
     def set_text_callback(self, callback: Callable[[str], None]) -> None:
         """Setze Callback-Funktion, die bei neuem Text aufgerufen wird."""
@@ -210,7 +214,7 @@ class LiveSpeechRecognition:
             if self.chat_assistant:
                 for sentence in result.get("new_sentences", []):
                     if sentence and sentence.text:
-                        if should_send_to_chatgpt(sentence.text):
+                        if should_send_to_chatgpt(sentence.text, self.min_chat_words, self.trivial_words):
                             self.chat_assistant.handle_text(sentence.text)
         else:
             self.current_text = text
@@ -218,7 +222,7 @@ class LiveSpeechRecognition:
             self._update_display(self._display_text)
 
             if self.chat_assistant:
-                if self._last_chat_text != text and should_send_to_chatgpt(text):
+                if self._last_chat_text != text and should_send_to_chatgpt(text, self.min_chat_words, self.trivial_words):
                     self._last_chat_text = text
                     self.chat_assistant.handle_text(text)
 
@@ -393,6 +397,8 @@ def run_live_recognition(enable_chatgpt: bool = False):
         pause_duration=settings.live_pause_duration,
         wake_phrases=tuple(settings.wake_phrases),
         stop_phrases=tuple(settings.stop_phrases),
+        min_chat_words=settings.min_chat_words,
+        trivial_words=settings.trivial_words,
         chat_assistant=chat_assistant,
     )
 

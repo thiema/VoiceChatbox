@@ -36,6 +36,8 @@ class Settings:
     live_pause_duration: float
     wake_phrases: list[str]
     stop_phrases: list[str]
+    min_chat_words: int
+    trivial_words: list[str]
 
 def load_settings() -> Settings:
     key = os.getenv("OPENAI_API_KEY", "").strip()
@@ -44,6 +46,8 @@ def load_settings() -> Settings:
 
     wake_phrases = [p.strip().lower() for p in os.getenv("WAKE_PHRASES", "ok google,okay google").split(",") if p.strip()]
     stop_phrases = [p.strip().lower() for p in os.getenv("STOP_PHRASES", "stopp,stop").split(",") if p.strip()]
+    min_chat_words = int(os.getenv("MIN_CHAT_WORDS", "2"))
+    trivial_words = [p.strip().lower() for p in os.getenv("TRIVIAL_WORDS", "").split(",") if p.strip()]
 
     return Settings(
         openai_api_key=key,
@@ -68,4 +72,6 @@ def load_settings() -> Settings:
         live_pause_duration=float(os.getenv("LIVE_PAUSE_DURATION", "0.9")),
         wake_phrases=wake_phrases,
         stop_phrases=stop_phrases,
+        min_chat_words=min_chat_words,
+        trivial_words=trivial_words,
     )

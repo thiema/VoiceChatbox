@@ -167,6 +167,8 @@ class LiveMultiLanguageVoskRecognition:
                  chunk_duration: float = 3.0, mode: str = "best",
                  wake_phrases: tuple[str, ...] | None = None,
                  stop_phrases: tuple[str, ...] | None = None,
+                 min_chat_words: int = 2,
+                 trivial_words: list[str] | None = None,
                  chat_assistant: Optional[ChatAssistant] = None):
         """
         Initialisiere Live mehrsprachige Spracherkennung.
@@ -192,6 +194,8 @@ class LiveMultiLanguageVoskRecognition:
         self._status_text: Optional[str] = None
         self.wake_phrases = wake_phrases or ("ok google", "okay google")
         self.stop_phrases = stop_phrases or ("stopp", "stop")
+        self.min_chat_words = min_chat_words
+        self.trivial_words = set(trivial_words or [])
     
     def set_text_callback(self, callback: Callable[[str], None]) -> None:
         """Setze Callback-Funktion, die bei neuem Text aufgerufen wird."""
@@ -293,7 +297,9 @@ class LiveMultiLanguageVoskRecognition:
                     else:
                         self.current_text = text
                     print(f"[{lang.upper()}] {text}")
-                    if self.chat_assistant and self._last_chat_text != text and should_send_to_chatgpt(text):
+                    if self.chat_assistant and self._last_chat_text != text and should_send_to_chatgpt(
+                        text, self.min_chat_words, self.trivial_words
+                    ):
                         self._last_chat_text = text
                         self.chat_assistant.handle_text(text)
             
@@ -307,7 +313,9 @@ class LiveMultiLanguageVoskRecognition:
                     else:
                         self.current_text = text
                     print(f"[KOMBINIERT] {text}")
-                    if self.chat_assistant and self._last_chat_text != text and should_send_to_chatgpt(text):
+                    if self.chat_assistant and self._last_chat_text != text and should_send_to_chatgpt(
+                        text, self.min_chat_words, self.trivial_words
+                    ):
                         self._last_chat_text = text
                         self.chat_assistant.handle_text(text)
             
@@ -326,7 +334,7 @@ class LiveMultiLanguageVoskRecognition:
                     else:
                         self.current_text = text
                     if self.chat_assistant and self._last_chat_text != text:
-                        if should_send_to_chatgpt(text):
+                        if should_send_to_chatgpt(text, self.min_chat_words, self.trivial_words):
                             self._last_chat_text = text
                             self.chat_assistant.handle_text(text)
             
@@ -451,6 +459,8 @@ def run_multilang_vosk_recognition(
         mode=mode,
         wake_phrases=tuple(settings.wake_phrases),
         stop_phrases=tuple(settings.stop_phrases),
+        min_chat_words=settings.min_chat_words,
+        trivial_words=settings.trivial_words,
         chat_assistant=chat_assistant,
     )
 
