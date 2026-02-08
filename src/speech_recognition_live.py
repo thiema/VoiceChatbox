@@ -39,6 +39,7 @@ class LiveSpeechRecognition:
         self.semantic_processor = SemanticSpeechRecognition(language=language) if enable_semantic else None
         self.chat_assistant = chat_assistant
         self._last_chat_text: Optional[str] = None
+        self._display_text: str = ""
         self._audio_buffer: list[np.ndarray] = []
         self._silence_sec = 0.0
         self._speech_active = False
@@ -145,22 +146,25 @@ class LiveSpeechRecognition:
                 if analysis['sentiment'] != 'neutral':
                     print(f"   Sentiment: {analysis['sentiment']}")
 
-            display_text = self.semantic_processor.get_display_text(max_sentences=2)
-            if display_text:
-                self._update_display(display_text)
-            else:
-                self._update_display(self.current_text)
+            last_sentence = None
+            if result.get("new_sentences"):
+                last_sentence = result["new_sentences"][-1].text
+            elif result.get("incomplete_sentence"):
+                last_sentence = result["incomplete_sentence"]
+            elif result.get("complete_sentences"):
+                last_sentence = result["complete_sentences"][-1].text
+
+            self._display_text = last_sentence or text
+            self._update_display(self._display_text)
 
             if self.chat_assistant:
                 for sentence in result.get("new_sentences", []):
                     if sentence and sentence.text:
                         self.chat_assistant.handle_text(sentence.text)
         else:
-            if self.current_text:
-                self.current_text += " " + text
-            else:
-                self.current_text = text
-            self._update_display(self.current_text)
+            self.current_text = text
+            self._display_text = text
+            self._update_display(self._display_text)
 
             if self.chat_assistant:
                 if self._last_chat_text != text:
@@ -168,10 +172,10 @@ class LiveSpeechRecognition:
                     self.chat_assistant.handle_text(text)
 
         if self.text_callback:
-            self.text_callback(self.current_text)
+            self.text_callback(self._display_text)
 
         print(f"Erkannt: {text}")
-        print(f"Gesamt: {self.current_text}")
+        print(f"Anzeige: {self._display_text}")
 
     def _process_chunk(self) -> None:
         """Nimmt einen Chunk auf, erkennt Ende der Aussage, transkribiert und aktualisiert das Display."""
@@ -255,6 +259,7 @@ class LiveSpeechRecognition:
         self._audio_buffer.clear()
         self._silence_sec = 0.0
         self._speech_active = False
+        self._display_text = ""
         if self.oled:
             self.oled.clear()
         print("Spracherkennung gestoppt.")
