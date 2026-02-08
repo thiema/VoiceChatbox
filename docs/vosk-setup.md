@@ -54,6 +54,7 @@ Vosk bietet verschiedene deutsche Modelle:
    # Kleines Modell (empfohlen)
    wget https://alphacephei.com/vosk/models/vosk-model-small-ru-0.22.zip
    wget https://alphacephei.com/vosk/models/vosk-model-small-de-0.15.zip
+   wget https://alphacephei.com/vosk/models/vosk-model-small-en-us-0.15.zip
    
    # Oder großes Modell (bessere Genauigkeit)
    wget https://alphacephei.com/vosk/models/vosk-model-de-0.21.zip
@@ -92,6 +93,28 @@ VOSK_MODEL_PATH=models/vosk-model-de-0.22
 
 # Optional: Standardmäßig Vosk verwenden
 USE_VOSK=false  # true = Vosk, false = OpenAI
+```
+
+### Empfohlene Defaults für bessere Erkennung
+
+Diese Werte reduzieren Fehldeutungen und vermeiden, dass unvollständige Wörter
+an OpenAI gesendet werden:
+
+```bash
+# Längere Pause bis Satzende (verhindert Satz-Splits)
+LIVE_PAUSE_DURATION=1.2
+
+# Erst ab 3 Wörtern an ChatGPT senden
+MIN_CHAT_WORDS=3
+
+# Triviale Wörter als Fragmente blocken
+TRIVIAL_WORDS=die,der,das,ein,eine,und,oder,aber,ok,okay,etc,äh,ähm
+
+# Nach TTS kurz sperren, um Echo zu vermeiden
+CHAT_IGNORE_AFTER_TTS_SEC=2.0
+
+# Nach Inaktivität automatisch in Pause
+AUTO_PAUSE_AFTER_SEC=10
 ```
 
 **Hinweis:** Der Pfad ist relativ zum Projektverzeichnis oder absolut.
