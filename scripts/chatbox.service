@@ -5,15 +5,15 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-WorkingDirectory=/home/marian/Projects/VoiceChatbox
-EnvironmentFile=/home/marian/Projects/VoiceChatbox/.env
-ExecStart=/home/marian/Projects/VoiceChatbox/.venv/bin/python -m src.main --live-recognition --vosk --chatgpt
+WorkingDirectory=/home/mariano/VoiceChatbox
+EnvironmentFile=/home/mariano/VoiceChatbox/.env
+ExecStart=/home/mariano/VoiceChatbox/.venv/bin/python -m src.main --live-recognition --vosk --chatgpt
 Restart=on-failure
 RestartSec=2
 
 # Audio permissions
-User=marian
-Group=marian
+User=mariano
+Group=mariano
 
 [Install]
 WantedBy=multi-user.target
