@@ -5,6 +5,27 @@ from dataclasses import dataclass
 
 from .context_correction import ContextualSpeechCorrection
 
+_TRIVIAL_WORDS = {
+    # German
+    "die", "der", "das", "ein", "eine", "einer", "einem", "einen", "und", "oder",
+    "aber", "doch", "also", "so", "na", "ja", "nein", "ok", "okay", "halt",
+    "bitte", "danke", "genau", "vielleicht", "hm", "äh", "ähm", "tja", "etc",
+    # English
+    "the", "a", "an", "and", "or", "but", "so", "ok", "okay", "yes", "no",
+    "please", "thanks", "well", "um", "uh", "etc",
+}
+
+def should_send_to_chatgpt(text: str, min_words: int = 2) -> bool:
+    """Filter trivial/fragmentary utterances before sending to ChatGPT."""
+    if not text:
+        return False
+    tokens = re.findall(r"\b\w+\b", text.lower())
+    if len(tokens) < min_words:
+        return False
+    if all(t in _TRIVIAL_WORDS for t in tokens):
+        return False
+    return True
+
 
 @dataclass
 class Sentence:

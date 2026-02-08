@@ -11,6 +11,7 @@ from pathlib import Path
 from .audio_io import _resolve_device_id, select_input_device, wait_for_playback_end
 from .oled_display import OledDisplay
 from .chat_assistant import ChatAssistant
+from .sentence_detection import should_send_to_chatgpt
 
 
 class MultiLanguageVoskRecognition:
@@ -249,9 +250,10 @@ class LiveMultiLanguageVoskRecognition:
 
     def _check_commands(self, text: str) -> str | None:
         norm = self._normalize_command_text(text)
-        if any(phrase in norm for phrase in self.stop_phrases):
+        padded = f" {norm} "
+        if any(f" {phrase} " in padded for phrase in self.stop_phrases):
             return "stop"
-        if any(phrase in norm for phrase in self.wake_phrases):
+        if any(f" {phrase} " in padded for phrase in self.wake_phrases):
             return "wake"
         return None
 
@@ -291,7 +293,7 @@ class LiveMultiLanguageVoskRecognition:
                     else:
                         self.current_text = text
                     print(f"[{lang.upper()}] {text}")
-                    if self.chat_assistant and self._last_chat_text != text:
+                    if self.chat_assistant and self._last_chat_text != text and should_send_to_chatgpt(text):
                         self._last_chat_text = text
                         self.chat_assistant.handle_text(text)
             
@@ -305,7 +307,7 @@ class LiveMultiLanguageVoskRecognition:
                     else:
                         self.current_text = text
                     print(f"[KOMBINIERT] {text}")
-                    if self.chat_assistant and self._last_chat_text != text:
+                    if self.chat_assistant and self._last_chat_text != text and should_send_to_chatgpt(text):
                         self._last_chat_text = text
                         self.chat_assistant.handle_text(text)
             
@@ -324,8 +326,9 @@ class LiveMultiLanguageVoskRecognition:
                     else:
                         self.current_text = text
                     if self.chat_assistant and self._last_chat_text != text:
-                        self._last_chat_text = text
-                        self.chat_assistant.handle_text(text)
+                        if should_send_to_chatgpt(text):
+                            self._last_chat_text = text
+                            self.chat_assistant.handle_text(text)
             
             if self.current_text:
                 self._update_display(self.current_text)

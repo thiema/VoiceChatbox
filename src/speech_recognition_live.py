@@ -12,7 +12,7 @@ from openai import OpenAI
 from .config import load_settings
 from .audio_io import _resolve_device_id, select_input_device, wait_for_playback_end, is_playback_active
 from .oled_display import OledDisplay
-from .sentence_detection import SemanticSpeechRecognition
+from .sentence_detection import SemanticSpeechRecognition, should_send_to_chatgpt
 from .chat_assistant import ChatAssistant
 
 
@@ -135,9 +135,10 @@ class LiveSpeechRecognition:
 
     def _check_commands(self, text: str) -> str | None:
         norm = self._normalize_command_text(text)
-        if any(phrase in norm for phrase in self.stop_phrases):
+        padded = f" {norm} "
+        if any(f" {phrase} " in padded for phrase in self.stop_phrases):
             return "stop"
-        if any(phrase in norm for phrase in self.wake_phrases):
+        if any(f" {phrase} " in padded for phrase in self.wake_phrases):
             return "wake"
         return None
     
@@ -209,14 +210,15 @@ class LiveSpeechRecognition:
             if self.chat_assistant:
                 for sentence in result.get("new_sentences", []):
                     if sentence and sentence.text:
-                        self.chat_assistant.handle_text(sentence.text)
+                        if should_send_to_chatgpt(sentence.text):
+                            self.chat_assistant.handle_text(sentence.text)
         else:
             self.current_text = text
             self._display_text = text
             self._update_display(self._display_text)
 
             if self.chat_assistant:
-                if self._last_chat_text != text:
+                if self._last_chat_text != text and should_send_to_chatgpt(text):
                     self._last_chat_text = text
                     self.chat_assistant.handle_text(text)
 
