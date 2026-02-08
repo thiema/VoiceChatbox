@@ -33,6 +33,7 @@ class Settings:
     # Vosk (lokales Sprachmodell)
     vosk_model_path: str | None
     vosk_model_path_en: str | None  # Englisch
+    live_pause_duration: float
 
 def load_settings() -> Settings:
     key = os.getenv("OPENAI_API_KEY", "").strip()
@@ -59,4 +60,5 @@ def load_settings() -> Settings:
         
         vosk_model_path=os.getenv("VOSK_MODEL_PATH") or None,
         vosk_model_path_en=os.getenv("VOSK_MODEL_PATH_EN") or None,
+        live_pause_duration=float(os.getenv("LIVE_PAUSE_DURATION", "0.9")),
     )

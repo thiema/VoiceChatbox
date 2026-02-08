@@ -21,6 +21,7 @@ class LiveSpeechRecognition:
     
     def __init__(self, client: OpenAI, model_stt: str, device: Optional[str | int] = None,
                  enable_semantic: bool = True, language: str = "de",
+                 pause_duration: float | None = None,
                  chat_assistant: Optional[ChatAssistant] = None):
         self.client = client
         self.model_stt = model_stt
@@ -28,7 +29,7 @@ class LiveSpeechRecognition:
         self.device_id = _resolve_device_id(device)
         self.samplerate = 16000
         self.chunk_duration = 0.5  # Sekunden pro Chunk
-        self.pause_duration = 0.9  # Sekunden Stille bis "Ende der Aussage"
+        self.pause_duration = pause_duration if pause_duration is not None else 0.9
         self.silence_threshold = 0.02  # RMS-Schwellwert (0..1)
         self.noise_floor = 0.0
         self.noise_alpha = 0.95
@@ -335,6 +336,7 @@ def run_live_recognition(enable_chatgpt: bool = False):
         client=client,
         model_stt=settings.model_stt,
         device=settings.audio_input_device,
+        pause_duration=settings.live_pause_duration,
         chat_assistant=chat_assistant,
     )
     
