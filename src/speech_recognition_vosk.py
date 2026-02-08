@@ -8,7 +8,7 @@ import sounddevice as sd
 from typing import Callable, Optional
 from pathlib import Path
 
-from .audio_io import _resolve_device_id, select_input_device
+from .audio_io import _resolve_device_id, select_input_device, wait_for_playback_end
 from .oled_display import OledDisplay
 from .sentence_detection import SemanticSpeechRecognition
 from .chat_assistant import ChatAssistant
@@ -268,6 +268,8 @@ class LiveVoskRecognition:
     def _process_chunk(self) -> None:
         """Nimmt einen Chunk auf, transkribiert ihn und aktualisiert das Display."""
         try:
+            # Während Ausgabe nichts aufnehmen
+            wait_for_playback_end()
             # Audio aufnehmen
             audio_data = self._record_chunk()
             

@@ -2,11 +2,22 @@ from __future__ import annotations
 import io
 import sys
 import time
+import threading
 import wave
 import re
 import numpy as np
 import sounddevice as sd
 from scipy.signal import resample_poly
+
+_playback_active = threading.Event()
+
+def is_playback_active() -> bool:
+    return _playback_active.is_set()
+
+def wait_for_playback_end(poll_interval: float = 0.05) -> None:
+    """Block until playback is finished."""
+    while _playback_active.is_set():
+        time.sleep(poll_interval)
 
 def _get_input_devices() -> list[tuple[int, dict]]:
     """Return list of (device_id, device_info) for input-capable devices."""
@@ -241,10 +252,12 @@ def play_wav_bytes(wav_bytes: bytes, device: str | int | None = None, announce: 
         channels=target_channels,
         dtype="int16",
     )
+    _playback_active.set()
     try:
         stream.start()
         stream.write(audio)
     finally:
+        _playback_active.clear()
         stream.stop()
         stream.close()
 
@@ -261,6 +274,9 @@ def record_while_pressed(is_pressed_fn, samplerate: int = 16000, device: str | i
     dtype = "int16"
     frames = []
     
+    # Warte, falls gerade Ausgabe läuft
+    wait_for_playback_end()
+
     # Liste Geräte und zeige gewähltes Device
     device_id = select_input_device(device, announce=True)
     

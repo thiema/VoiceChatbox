@@ -8,7 +8,7 @@ import sounddevice as sd
 from typing import Callable, Optional, Dict, List, Tuple
 from pathlib import Path
 
-from .audio_io import _resolve_device_id, select_input_device
+from .audio_io import _resolve_device_id, select_input_device, wait_for_playback_end
 from .chat_assistant import ChatAssistant
 from .oled_display import OledDisplay
 from .sentence_detection import SemanticSpeechRecognition
@@ -293,6 +293,8 @@ class SmartMultiLanguageVoskRecognition:
     def _process_chunk(self) -> None:
         """Verarbeite einen Audio-Chunk."""
         try:
+            # Während Ausgabe nichts aufnehmen
+            wait_for_playback_end()
             # Audio aufnehmen
             audio_data = self._record_chunk()
             
