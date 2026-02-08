@@ -22,6 +22,8 @@ class LiveSpeechRecognition:
     def __init__(self, client: OpenAI, model_stt: str, device: Optional[str | int] = None,
                  enable_semantic: bool = True, language: str = "de",
                  pause_duration: float | None = None,
+                 wake_phrases: tuple[str, ...] | None = None,
+                 stop_phrases: tuple[str, ...] | None = None,
                  chat_assistant: Optional[ChatAssistant] = None):
         self.client = client
         self.model_stt = model_stt
@@ -48,6 +50,10 @@ class LiveSpeechRecognition:
         self._silence_sec = 0.0
         self._speech_active = False
         self._speech_sec = 0.0
+        self.listening_active = False
+        self._paused_notice = False
+        self.wake_phrases = wake_phrases or ("ok google", "okay google")
+        self.stop_phrases = stop_phrases or ("stopp", "stop")
         
     def set_text_callback(self, callback: Callable[[str], None]) -> None:
         """Setze Callback-Funktion, die bei neuem Text aufgerufen wird."""
@@ -108,6 +114,20 @@ class LiveSpeechRecognition:
         """Aktualisiere OLED-Display mit Laufband-Text."""
         if self.oled and self.oled.device:
             self.oled.show_text_scroll(text)
+
+    @staticmethod
+    def _normalize_command_text(text: str) -> str:
+        text = (text or "").lower()
+        text = re.sub(r"[^a-z0-9äöüß ]+", " ", text)
+        return re.sub(r"\s+", " ", text).strip()
+
+    def _check_commands(self, text: str) -> str | None:
+        norm = self._normalize_command_text(text)
+        if any(phrase in norm for phrase in self.stop_phrases):
+            return "stop"
+        if any(phrase in norm for phrase in self.wake_phrases):
+            return "wake"
+        return None
     
     def _process_text(self, text: str) -> None:
         """Verarbeite erkannten Text (Anzeige, Semantik, ChatGPT)."""
@@ -118,6 +138,29 @@ class LiveSpeechRecognition:
             return
 
         text = re.sub(r'\s+', ' ', text).strip()
+
+        cmd = self._check_commands(text)
+        if cmd == "stop":
+            self.listening_active = False
+            self._paused_notice = True
+            self._display_text = "PAUSE"
+            self._update_display(self._display_text)
+            print("⏸️  STOPP erkannt. Aufnahme deaktiviert.")
+            return
+        if cmd == "wake":
+            self.listening_active = True
+            self._paused_notice = False
+            self._display_text = "BEREIT"
+            self._update_display(self._display_text)
+            print("🎤 OK GOOGLE erkannt. Aufnahme aktiviert.")
+            return
+
+        if not self.listening_active:
+            if not self._paused_notice:
+                self._paused_notice = True
+                self._display_text = "PAUSE"
+                self._update_display(self._display_text)
+            return
 
         if self.semantic_processor:
             temp_text = self.current_text + " " + text if self.current_text else text
@@ -255,6 +298,8 @@ class LiveSpeechRecognition:
         self.oled = oled
         self.is_running = True
         self.current_text = ""
+        self.listening_active = False
+        self._paused_notice = False
         
         if self.oled:
             self.oled.show_listening()
@@ -294,6 +339,8 @@ class LiveSpeechRecognition:
         self._speech_active = False
         self._speech_sec = 0.0
         self._display_text = ""
+        self.listening_active = False
+        self._paused_notice = False
         if self.oled:
             self.oled.clear()
         print("Spracherkennung gestoppt.")
@@ -337,6 +384,8 @@ def run_live_recognition(enable_chatgpt: bool = False):
         model_stt=settings.model_stt,
         device=settings.audio_input_device,
         pause_duration=settings.live_pause_duration,
+        wake_phrases=tuple(settings.wake_phrases),
+        stop_phrases=tuple(settings.stop_phrases),
         chat_assistant=chat_assistant,
     )
     

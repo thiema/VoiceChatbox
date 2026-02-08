@@ -2,6 +2,7 @@ from __future__ import annotations
 import io
 import wave
 import json
+import re
 import numpy as np
 import sounddevice as sd
 from typing import Callable, Optional, Dict, List, Tuple
@@ -163,6 +164,8 @@ class LiveMultiLanguageVoskRecognition:
     
     def __init__(self, model_paths: Dict[str, str], device: Optional[str | int] = None,
                  chunk_duration: float = 3.0, mode: str = "best",
+                 wake_phrases: tuple[str, ...] | None = None,
+                 stop_phrases: tuple[str, ...] | None = None,
                  chat_assistant: Optional[ChatAssistant] = None):
         """
         Initialisiere Live mehrsprachige Spracherkennung.
@@ -183,6 +186,10 @@ class LiveMultiLanguageVoskRecognition:
         self.text_callback: Optional[Callable[[str], None]] = None
         self.chat_assistant = chat_assistant
         self._last_chat_text: Optional[str] = None
+        self.listening_active = False
+        self._paused_notice = False
+        self.wake_phrases = wake_phrases or ("ok google", "okay google")
+        self.stop_phrases = stop_phrases or ("stopp", "stop")
     
     def set_text_callback(self, callback: Callable[[str], None]) -> None:
         """Setze Callback-Funktion, die bei neuem Text aufgerufen wird."""
@@ -222,6 +229,41 @@ class LiveMultiLanguageVoskRecognition:
         """Aktualisiere OLED-Display."""
         if self.oled and self.oled.device:
             self.oled.show_text_scroll(text)
+
+    @staticmethod
+    def _normalize_command_text(text: str) -> str:
+        text = (text or "").lower()
+        text = re.sub(r"[^a-z0-9äöüß ]+", " ", text)
+        return re.sub(r"\s+", " ", text).strip()
+
+    def _check_commands(self, text: str) -> str | None:
+        norm = self._normalize_command_text(text)
+        if any(phrase in norm for phrase in self.stop_phrases):
+            return "stop"
+        if any(phrase in norm for phrase in self.wake_phrases):
+            return "wake"
+        return None
+
+    def _should_process_text(self, text: str) -> bool:
+        cmd = self._check_commands(text)
+        if cmd == "stop":
+            self.listening_active = False
+            self._paused_notice = True
+            self._update_display("PAUSE")
+            print("⏸️  STOPP erkannt. Aufnahme deaktiviert.")
+            return False
+        if cmd == "wake":
+            self.listening_active = True
+            self._paused_notice = False
+            self._update_display("BEREIT")
+            print("🎤 OK GOOGLE erkannt. Aufnahme aktiviert.")
+            return False
+        if not self.listening_active:
+            if not self._paused_notice:
+                self._paused_notice = True
+                self._update_display("PAUSE")
+            return False
+        return True
     
     def _process_chunk(self) -> None:
         """Verarbeite einen Audio-Chunk."""
@@ -239,6 +281,8 @@ class LiveMultiLanguageVoskRecognition:
             if self.mode == "best":
                 lang, text = self.vosk.transcribe_audio_best(wav_bytes)
                 if text:
+                    if not self._should_process_text(text):
+                        return
                     if self.current_text:
                         self.current_text += " " + text
                     else:
@@ -251,6 +295,8 @@ class LiveMultiLanguageVoskRecognition:
             elif self.mode == "combined":
                 text = self.vosk.transcribe_audio_combined(wav_bytes)
                 if text:
+                    if not self._should_process_text(text):
+                        return
                     if self.current_text:
                         self.current_text += " " + text
                     else:
@@ -268,6 +314,8 @@ class LiveMultiLanguageVoskRecognition:
                     # Verwende das beste Ergebnis für Display
                     best_lang = max(results.keys(), key=lambda k: len(results[k]))
                     text = results[best_lang]
+                    if text and not self._should_process_text(text):
+                        return
                     if self.current_text:
                         self.current_text += " " + text
                     else:
@@ -289,6 +337,8 @@ class LiveMultiLanguageVoskRecognition:
         self.oled = oled
         self.is_running = True
         self.current_text = ""
+        self.listening_active = False
+        self._paused_notice = False
 
         # Geräteauswahl anzeigen + Fallback
         self.vosk.device_id = select_input_device(self.vosk.device_spec, announce=True)
@@ -316,6 +366,8 @@ class LiveMultiLanguageVoskRecognition:
     def stop(self) -> None:
         """Stoppe die Spracherkennung."""
         self.is_running = False
+        self.listening_active = False
+        self._paused_notice = False
         if self.oled:
             self.oled.clear()
         print("Spracherkennung gestoppt.")
@@ -385,6 +437,8 @@ def run_multilang_vosk_recognition(
         model_paths=model_paths,
         device=settings.audio_input_device,
         mode=mode,
+        wake_phrases=tuple(settings.wake_phrases),
+        stop_phrases=tuple(settings.stop_phrases),
         chat_assistant=chat_assistant,
     )
     

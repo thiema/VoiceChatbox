@@ -34,11 +34,16 @@ class Settings:
     vosk_model_path: str | None
     vosk_model_path_en: str | None  # Englisch
     live_pause_duration: float
+    wake_phrases: list[str]
+    stop_phrases: list[str]
 
 def load_settings() -> Settings:
     key = os.getenv("OPENAI_API_KEY", "").strip()
     if not key or key == "PASTE_YOUR_KEY_HERE":
         raise RuntimeError("OPENAI_API_KEY fehlt. Bitte in .env setzen.")
+
+    wake_phrases = [p.strip().lower() for p in os.getenv("WAKE_PHRASES", "ok google,okay google").split(",") if p.strip()]
+    stop_phrases = [p.strip().lower() for p in os.getenv("STOP_PHRASES", "stopp,stop").split(",") if p.strip()]
 
     return Settings(
         openai_api_key=key,
@@ -61,4 +66,6 @@ def load_settings() -> Settings:
         vosk_model_path=os.getenv("VOSK_MODEL_PATH") or None,
         vosk_model_path_en=os.getenv("VOSK_MODEL_PATH_EN") or None,
         live_pause_duration=float(os.getenv("LIVE_PAUSE_DURATION", "0.9")),
+        wake_phrases=wake_phrases,
+        stop_phrases=stop_phrases,
     )

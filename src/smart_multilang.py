@@ -25,6 +25,8 @@ class SmartMultiLanguageVoskRecognition:
                  device: Optional[str | int] = None,
                  chunk_duration: float = 3.0, enable_audio_processing: bool = True,
                  enable_semantic: bool = True,
+                 wake_phrases: tuple[str, ...] | None = None,
+                 stop_phrases: tuple[str, ...] | None = None,
                  chat_assistant: Optional[ChatAssistant] = None):
         """
         Initialisiere intelligente mehrsprachige Spracherkennung.
@@ -47,6 +49,10 @@ class SmartMultiLanguageVoskRecognition:
         self.enable_semantic = enable_semantic
         self.chat_assistant = chat_assistant
         self._last_chat_text: Optional[str] = None
+        self.listening_active = False
+        self._paused_notice = False
+        self.wake_phrases = wake_phrases or ("ok google", "okay google")
+        self.stop_phrases = stop_phrases or ("stopp", "stop")
         
         # Englische Wörter, die im deutschen Kontext verwendet werden
         self.english_words = {
@@ -289,6 +295,41 @@ class SmartMultiLanguageVoskRecognition:
         """Aktualisiere OLED-Display."""
         if self.oled and self.oled.device:
             self.oled.show_text_scroll(text)
+
+    @staticmethod
+    def _normalize_command_text(text: str) -> str:
+        text = (text or "").lower()
+        text = re.sub(r"[^a-z0-9äöüß ]+", " ", text)
+        return re.sub(r"\s+", " ", text).strip()
+
+    def _check_commands(self, text: str) -> str | None:
+        norm = self._normalize_command_text(text)
+        if any(phrase in norm for phrase in self.stop_phrases):
+            return "stop"
+        if any(phrase in norm for phrase in self.wake_phrases):
+            return "wake"
+        return None
+
+    def _should_process_text(self, text: str) -> bool:
+        cmd = self._check_commands(text)
+        if cmd == "stop":
+            self.listening_active = False
+            self._paused_notice = True
+            self._update_display("PAUSE")
+            print("⏸️  STOPP erkannt. Aufnahme deaktiviert.")
+            return False
+        if cmd == "wake":
+            self.listening_active = True
+            self._paused_notice = False
+            self._update_display("BEREIT")
+            print("🎤 OK GOOGLE erkannt. Aufnahme aktiviert.")
+            return False
+        if not self.listening_active:
+            if not self._paused_notice:
+                self._paused_notice = True
+                self._update_display("PAUSE")
+            return False
+        return True
     
     def _process_chunk(self) -> None:
         """Verarbeite einen Audio-Chunk."""
@@ -317,6 +358,8 @@ class SmartMultiLanguageVoskRecognition:
             text = self._merge_texts(text_de, text_en)
             
             if text:
+                if not self._should_process_text(text):
+                    return
                 # Stelle sicher, dass Text Leerzeichen hat
                 text = re.sub(r'\s+', ' ', text).strip()
                 
@@ -412,6 +455,8 @@ class SmartMultiLanguageVoskRecognition:
         self.is_running = True
         self.current_text = ""
         self.last_processed_length = 0
+        self.listening_active = False
+        self._paused_notice = False
 
         # Geräteauswahl anzeigen + Fallback
         self.device_id = select_input_device(self.device_spec, announce=True)
@@ -440,6 +485,8 @@ class SmartMultiLanguageVoskRecognition:
     def stop(self) -> None:
         """Stoppe die Spracherkennung."""
         self.is_running = False
+        self.listening_active = False
+        self._paused_notice = False
         if self.oled:
             self.oled.clear()
         print("Spracherkennung gestoppt.")
@@ -457,13 +504,14 @@ def run_smart_multilang_recognition(
 ):
     """Hauptfunktion für intelligente mehrsprachige Spracherkennung."""
     import time
+    from .config import load_settings
     
+    settings = load_settings()
+
     # ChatGPT-Assistent (optional)
     chat_assistant = None
     if enable_chatgpt:
         from openai import OpenAI
-        from .config import load_settings
-        settings = load_settings()
         client = OpenAI(api_key=settings.openai_api_key)
         chat_assistant = ChatAssistant(
             client=client,
@@ -478,6 +526,8 @@ def run_smart_multilang_recognition(
         model_path_de=model_path_de,
         model_path_en=model_path_en,
         device=device,
+        wake_phrases=tuple(settings.wake_phrases),
+        stop_phrases=tuple(settings.stop_phrases),
         chat_assistant=chat_assistant,
     )
     

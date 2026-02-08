@@ -163,6 +163,8 @@ class LiveVoskRecognition:
     def __init__(self, model_path: str, device: Optional[str | int] = None,
                  chunk_duration: float = 3.0, enable_audio_processing: bool = True,
                  enable_semantic: bool = True, language: str = "de",
+                 wake_phrases: tuple[str, ...] | None = None,
+                 stop_phrases: tuple[str, ...] | None = None,
                  chat_assistant: Optional[ChatAssistant] = None):
         """
         Initialisiere Live-Vosk-Spracherkennung.
@@ -187,6 +189,10 @@ class LiveVoskRecognition:
         self.semantic_processor = SemanticSpeechRecognition(language=language) if enable_semantic else None
         self.chat_assistant = chat_assistant
         self._last_chat_text: Optional[str] = None
+        self.listening_active = False
+        self._paused_notice = False
+        self.wake_phrases = wake_phrases or ("ok google", "okay google")
+        self.stop_phrases = stop_phrases or ("stopp", "stop")
     
     def set_text_callback(self, callback: Callable[[str], None]) -> None:
         """Setze Callback-Funktion, die bei neuem Text aufgerufen wird."""
@@ -264,6 +270,20 @@ class LiveVoskRecognition:
         """Aktualisiere OLED-Display mit Laufband-Text."""
         if self.oled and self.oled.device:
             self.oled.show_text_scroll(text)
+
+    @staticmethod
+    def _normalize_command_text(text: str) -> str:
+        text = (text or "").lower()
+        text = re.sub(r"[^a-z0-9äöüß ]+", " ", text)
+        return re.sub(r"\s+", " ", text).strip()
+
+    def _check_commands(self, text: str) -> str | None:
+        norm = self._normalize_command_text(text)
+        if any(phrase in norm for phrase in self.stop_phrases):
+            return "stop"
+        if any(phrase in norm for phrase in self.wake_phrases):
+            return "wake"
+        return None
     
     def _process_chunk(self) -> None:
         """Nimmt einen Chunk auf, transkribiert ihn und aktualisiert das Display."""
@@ -287,6 +307,26 @@ class LiveVoskRecognition:
             if text:
                 # Stelle sicher, dass Text Leerzeichen hat
                 text = re.sub(r'\s+', ' ', text).strip()
+
+                cmd = self._check_commands(text)
+                if cmd == "stop":
+                    self.listening_active = False
+                    self._paused_notice = True
+                    self._update_display("PAUSE")
+                    print("⏸️  STOPP erkannt. Aufnahme deaktiviert.")
+                    return
+                if cmd == "wake":
+                    self.listening_active = True
+                    self._paused_notice = False
+                    self._update_display("BEREIT")
+                    print("🎤 OK GOOGLE erkannt. Aufnahme aktiviert.")
+                    return
+
+                if not self.listening_active:
+                    if not self._paused_notice:
+                        self._paused_notice = True
+                        self._update_display("PAUSE")
+                    return
                 
                 # Prüfe, ob Text bereits vorhanden ist (verhindert Doppel-Ausgabe)
                 if self.current_text and text.lower() in self.current_text.lower():
@@ -374,6 +414,8 @@ class LiveVoskRecognition:
         self.oled = oled
         self.is_running = True
         self.current_text = ""
+        self.listening_active = False
+        self._paused_notice = False
 
         # Geräteauswahl anzeigen + Fallback
         self.vosk.device_id = select_input_device(self.vosk.device_spec, announce=True)
@@ -396,6 +438,8 @@ class LiveVoskRecognition:
     def stop(self) -> None:
         """Stoppe die Live-Spracherkennung."""
         self.is_running = False
+        self.listening_active = False
+        self._paused_notice = False
         if self.oled:
             self.oled.clear()
         print("Spracherkennung gestoppt.")
@@ -446,6 +490,8 @@ def run_live_vosk_recognition(model_path: Optional[str] = None, enable_chatgpt: 
     recognizer = LiveVoskRecognition(
         model_path=model_path,
         device=settings.audio_input_device,
+        wake_phrases=tuple(settings.wake_phrases),
+        stop_phrases=tuple(settings.stop_phrases),
         chat_assistant=chat_assistant,
     )
     
