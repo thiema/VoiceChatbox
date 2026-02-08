@@ -6,6 +6,7 @@ import wave
 import re
 import numpy as np
 import sounddevice as sd
+from scipy.signal import resample_poly
 
 def _get_input_devices() -> list[tuple[int, dict]]:
     """Return list of (device_id, device_info) for input-capable devices."""
@@ -186,7 +187,22 @@ def play_wav_bytes(wav_bytes: bytes, device: str | int | None = None, announce: 
     if channels > 1:
         audio = audio.reshape(-1, channels)
 
-    sd.play(audio, samplerate=samplerate, device=device_id)
+    # If the device rejects the sample rate, resample to its default.
+    try:
+        sd.check_output_settings(device=device_id, samplerate=samplerate, channels=channels, dtype="int16")
+        target_sr = samplerate
+    except sd.PortAudioError:
+        try:
+            dev_info = sd.query_devices(device_id)
+            target_sr = int(dev_info.get("default_samplerate") or 48000)
+        except Exception:
+            target_sr = 48000
+
+    if target_sr != samplerate and audio.size > 0:
+        # Resample using polyphase filtering for quality.
+        audio = resample_poly(audio, target_sr, samplerate, axis=0).astype(np.int16)
+
+    sd.play(audio, samplerate=target_sr, device=device_id)
     sd.wait()
 
 def record_while_pressed(is_pressed_fn, samplerate: int = 16000, device: str | int | None = None) -> bytes:
