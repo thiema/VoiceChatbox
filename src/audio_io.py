@@ -231,11 +231,22 @@ def play_wav_bytes(wav_bytes: bytes, device: str | int | None = None, announce: 
     if target_channels == 2 and channels == 1 and audio.size > 0:
         audio = np.column_stack([audio, audio])
 
-    sd.play(audio, samplerate=target_sr, device=device_id)
-    expected_sec = max(len(audio) / float(target_sr), 0.1)
-    # Simple sleep + stop avoids invalid stream pointer on some ALSA setups.
-    time.sleep(expected_sec + 0.2)
-    sd.stop()
+    if audio.size == 0:
+        return
+
+    # Use a dedicated OutputStream to avoid PortAudio crashes on stop/play.
+    stream = sd.OutputStream(
+        device=device_id,
+        samplerate=target_sr,
+        channels=target_channels,
+        dtype="int16",
+    )
+    try:
+        stream.start()
+        stream.write(audio)
+    finally:
+        stream.stop()
+        stream.close()
 
 def record_while_pressed(is_pressed_fn, samplerate: int = 16000, device: str | int | None = None) -> bytes:
     """
