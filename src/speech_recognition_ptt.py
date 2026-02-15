@@ -460,7 +460,7 @@ def run_ptt_live_recognition(use_vosk: bool = False, enable_chatgpt: bool = Fals
     chat_assistant = None
     if enable_chatgpt:
         client = OpenAI(api_key=settings.openai_api_key)
-        chat_assistant = ChatAssistant(
+        kwargs = dict(
             client=client,
             model_chat=settings.model_chat,
             model_tts=settings.model_tts,
@@ -470,6 +470,16 @@ def run_ptt_live_recognition(use_vosk: bool = False, enable_chatgpt: bool = Fals
             echo_input_local_tts=settings.echo_input_local_tts,
             announce_chat_request=settings.announce_chat_request,
         )
+        try:
+            chat_assistant = ChatAssistant(**kwargs)
+        except TypeError:
+            kwargs.pop("announce_chat_request", None)
+            kwargs.pop("echo_input_local_tts", None)
+            try:
+                chat_assistant = ChatAssistant(**kwargs)
+            except TypeError:
+                kwargs.pop("echo_input_before_chat", None)
+                chat_assistant = ChatAssistant(**kwargs)
 
     if use_vosk:
         # Prüfe, ob mehrsprachig verwendet werden soll
