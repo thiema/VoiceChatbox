@@ -31,6 +31,18 @@ def chatgpt_filter_decision(
         return False, "trivial_wörter"
     return True, None
 
+def chatgpt_filter_message(reason: str | None, min_words: int = 2) -> str | None:
+    """Return a short, spoken-friendly message for a filter reason."""
+    if not reason:
+        return None
+    if reason.startswith("zu_kurz"):
+        return f"Zu kurz. Bitte mindestens {min_words} Wörter."
+    if reason == "trivial_wörter":
+        return "Nur Füllwörter. Bitte einen vollständigen Satz."
+    if reason == "leer":
+        return "Kein Text erkannt."
+    return "Satz blockiert."
+
 def should_send_to_chatgpt(
     text: str,
     min_words: int = 2,

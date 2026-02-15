@@ -11,9 +11,13 @@ from pathlib import Path
 
 from .audio_io import _resolve_device_id, select_input_device, wait_for_playback_end, play_beep_sequence, play_hangup_tone
 from .chat_assistant import ChatAssistant
-from .sentence_detection import should_send_to_chatgpt, chatgpt_filter_decision
+from .sentence_detection import (
+    SemanticSpeechRecognition,
+    should_send_to_chatgpt,
+    chatgpt_filter_decision,
+    chatgpt_filter_message,
+)
 from .oled_display import OledDisplay
-from .sentence_detection import SemanticSpeechRecognition
 
 
 class SmartMultiLanguageVoskRecognition:
@@ -356,6 +360,18 @@ class SmartMultiLanguageVoskRecognition:
         self._ignore_until = time.time() + self.chat_ignore_after_tts_sec
         self._set_listening(False, "TTS fertig", context_mode=False)
 
+    def _announce_chat_filter_block(self, reason: str | None) -> None:
+        if not self.chat_assistant:
+            return
+        message = chatgpt_filter_message(reason, self.min_chat_words)
+        if not message:
+            return
+        try:
+            self.chat_assistant.speak(message)
+        except Exception as e:
+            if self.chat_filter_debug:
+                print(f"ChatGPT-Filter: Audio-Fehler ({e})")
+
     @staticmethod
     def _normalize_command_text(text: str) -> str:
         text = (text or "").lower()
@@ -521,8 +537,10 @@ class SmartMultiLanguageVoskRecognition:
                                         system_prompt_override=self._current_prompt(),
                                     )
                                     sent_any = True
-                                elif self.chat_filter_debug:
-                                    print(f"ChatGPT-Filter: '{sentence.text}' → blockiert ({reason})")
+                                else:
+                                    self._announce_chat_filter_block(reason)
+                                    if self.chat_filter_debug:
+                                        print(f"ChatGPT-Filter: '{sentence.text}' → blockiert ({reason})")
                         if sent_any:
                             self.current_text = ""
                             self._pending_prefix = ""
@@ -546,10 +564,12 @@ class SmartMultiLanguageVoskRecognition:
                             )
                             self.current_text = ""
                             self._pending_prefix = ""
-                        elif self.chat_filter_debug:
-                            print(f"ChatGPT-Filter: '{text}' → blockiert ({reason})")
                         else:
-                            self._pending_prefix = text
+                            self._announce_chat_filter_block(reason)
+                            if self.chat_filter_debug:
+                                print(f"ChatGPT-Filter: '{text}' → blockiert ({reason})")
+                            else:
+                                self._pending_prefix = text
                 
                 # Callback aufrufen
                 if self.text_callback:

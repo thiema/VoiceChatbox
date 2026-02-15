@@ -55,6 +55,21 @@ class ChatAssistant:
         thread = threading.Thread(target=self._run, args=(text, system_prompt_override), daemon=True)
         thread.start()
 
+    def speak(self, text: str, notify: bool = True) -> None:
+        """Speak text via TTS without sending it to ChatGPT (non-blocking)."""
+        text = (text or "").strip()
+        if not text:
+            return
+
+        def _speak() -> None:
+            try:
+                self._tts_play(text, notify=notify)
+            except Exception as e:
+                print(f"TTS-Fehler: {e}")
+
+        thread = threading.Thread(target=_speak, daemon=True)
+        thread.start()
+
     def _run(self, text: str, system_prompt_override: Optional[str]) -> None:
         try:
             if self.echo_input_before_chat:
