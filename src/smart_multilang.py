@@ -756,6 +756,7 @@ def run_smart_multilang_recognition(
         model_path_de=model_path_de,
         model_path_en=model_path_en,
         device=device,
+        chunk_duration=settings.vosk_chunk_duration,
         wake_phrases=tuple(settings.wake_phrases),
         context_phrases=tuple(settings.context_phrases),
         stop_phrases=tuple(settings.stop_phrases),

@@ -700,6 +700,7 @@ def run_multilang_vosk_recognition(
         model_paths=model_paths,
         device=settings.audio_input_device,
         mode=mode,
+        chunk_duration=settings.vosk_chunk_duration,
         wake_phrases=tuple(settings.wake_phrases),
         context_phrases=tuple(settings.context_phrases),
         stop_phrases=tuple(settings.stop_phrases),

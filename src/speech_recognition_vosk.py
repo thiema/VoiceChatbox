@@ -803,6 +803,7 @@ def run_live_vosk_recognition(model_path: Optional[str] = None, enable_chatgpt: 
     recognizer = LiveVoskRecognition(
         model_path=model_path,
         device=settings.audio_input_device,
+        chunk_duration=settings.vosk_chunk_duration,
         wake_phrases=tuple(settings.wake_phrases),
         context_phrases=tuple(settings.context_phrases),
         stop_phrases=tuple(settings.stop_phrases),
