@@ -455,9 +455,9 @@ class LiveVoskRecognition:
             return "reject"
         return None
 
-    def _request_confirmation(self, text: str, system_prompt_override: Optional[str]) -> None:
+    def _request_confirmation(self, text: str, system_prompt_override: Optional[str]) -> bool:
         if self._awaiting_confirm or not self.chat_assistant:
-            return
+            return False
         self._awaiting_confirm = True
         self._pending_confirm_text = text
         self._pending_confirm_prompt = system_prompt_override
@@ -467,6 +467,7 @@ class LiveVoskRecognition:
         self._last_tts_text = (message or "").strip().lower()
         self._ignore_until = time.time() + self.chat_ignore_after_tts_sec
         self.chat_assistant.speak(message, notify=False)
+        return True
 
     def _cancel_confirmation(self) -> None:
         if self.chat_assistant:
@@ -534,8 +535,8 @@ class LiveVoskRecognition:
                 self._last_chat_text = text
                 if self.debug_logs:
                     print(f"[DEBUG] prompt=NEW" if not self.context_mode else "[DEBUG] prompt=KONTEXT")
-                if self.confirm_before_chat:
-                    self._request_confirmation(text, self._current_prompt())
+                if self.confirm_before_chat and self._request_confirmation(text, self._current_prompt()):
+                    pass
                 else:
                     self.chat_assistant.handle_text(
                         text,
@@ -707,8 +708,10 @@ class LiveVoskRecognition:
                                 if allowed:
                                     if self.debug_logs:
                                         print(f"[DEBUG] prompt=NEW" if not self.context_mode else "[DEBUG] prompt=KONTEXT")
-                                    if self.confirm_before_chat:
-                                        self._request_confirmation(sentence.text, self._current_prompt())
+                                    if self.confirm_before_chat and self._request_confirmation(
+                                        sentence.text, self._current_prompt()
+                                    ):
+                                        pass
                                     else:
                                         self.chat_assistant.handle_text(
                                             sentence.text,
@@ -743,8 +746,10 @@ class LiveVoskRecognition:
                                 self._last_chat_text = text
                                 if self.debug_logs:
                                     print(f"[DEBUG] prompt=NEW" if not self.context_mode else "[DEBUG] prompt=KONTEXT")
-                                if self.confirm_before_chat:
-                                    self._request_confirmation(text, self._current_prompt())
+                                if self.confirm_before_chat and self._request_confirmation(
+                                    text, self._current_prompt()
+                                ):
+                                    pass
                                 else:
                                     self.chat_assistant.handle_text(
                                         text,
