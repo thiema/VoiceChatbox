@@ -181,6 +181,7 @@ class LiveMultiLanguageVoskRecognition:
                  chat_filter_debug: bool = False,
                  chat_ignore_after_tts_sec: float = 2.0,
                  auto_pause_after_sec: float = 10.0,
+                 pause_duration: float | None = None,
                  debug_logs: bool = False,
                  audio_output_device: str | int | None = None,
                  prompt_new: str | None = None,
@@ -219,6 +220,11 @@ class LiveMultiLanguageVoskRecognition:
         self.chat_filter_debug = chat_filter_debug
         self.chat_ignore_after_tts_sec = chat_ignore_after_tts_sec
         self.auto_pause_after_sec = auto_pause_after_sec
+        self.pause_duration = pause_duration if pause_duration is not None else 0.0
+        if self.pause_duration <= 0:
+            self.pause_duration = None
+        self._silence_sec = 0.0
+        self._speech_active = False
         self.debug_logs = debug_logs
         self.audio_output_device = audio_output_device
         self.confirm_before_chat = confirm_before_chat
@@ -370,6 +376,46 @@ class LiveMultiLanguageVoskRecognition:
         self._pending_prefix = ""
         return True
 
+    def _finalize_current_text(self) -> None:
+        if not self.pause_duration:
+            return
+        if self._awaiting_confirm:
+            return
+        if not self.listening_active:
+            self._speech_active = False
+            self._silence_sec = 0.0
+            return
+        text = (self.current_text or "").strip()
+        if self._pending_prefix:
+            if text:
+                text = f"{self._pending_prefix} {text}".strip()
+            else:
+                text = self._pending_prefix
+        if not text:
+            self._speech_active = False
+            self._silence_sec = 0.0
+            return
+        if self.chat_assistant and self._last_chat_text != text:
+            allowed, reason = chatgpt_filter_decision(text, self.min_chat_words, self.trivial_words)
+            if allowed:
+                self._last_chat_text = text
+                if self.debug_logs:
+                    print(f"[DEBUG] prompt=NEW" if not self.context_mode else "[DEBUG] prompt=KONTEXT")
+                if self.confirm_before_chat:
+                    self._request_confirmation(text, self._current_prompt())
+                else:
+                    self.chat_assistant.handle_text(
+                        text,
+                        system_prompt_override=self._current_prompt(),
+                    )
+            else:
+                self._pending_prefix = text
+                self._announce_chat_filter_block(reason)
+        self.current_text = ""
+        self._pending_prefix = ""
+        self._speech_active = False
+        self._silence_sec = 0.0
+
     def _check_commands(self, text: str) -> str | None:
         norm = self._normalize_command_text(text)
         padded = f" {norm} "
@@ -422,6 +468,15 @@ class LiveMultiLanguageVoskRecognition:
             # Transkribiere je nach Modus
             if self.mode == "best":
                 lang, text = self.vosk.transcribe_audio_best(wav_bytes)
+                if not text:
+                    if self.pause_duration:
+                        self._silence_sec += self.chunk_duration
+                        if self._speech_active and self._silence_sec >= self.pause_duration:
+                            self._finalize_current_text()
+                    return
+                if self.pause_duration:
+                    self._speech_active = True
+                    self._silence_sec = 0.0
                 if text:
                     self._debug(f"transcribe(best): '{text}'")
                     self._last_activity_ts = time.time()
@@ -442,7 +497,7 @@ class LiveMultiLanguageVoskRecognition:
                     else:
                         self.current_text = text
                     print(f"[{lang.upper()}] {text}")
-                    if self.chat_assistant and self._last_chat_text != text:
+                    if self.chat_assistant and self._last_chat_text != text and not self.pause_duration:
                         allowed, reason = chatgpt_filter_decision(
                             text, self.min_chat_words, self.trivial_words
                         )
@@ -468,6 +523,15 @@ class LiveMultiLanguageVoskRecognition:
             
             elif self.mode == "combined":
                 text = self.vosk.transcribe_audio_combined(wav_bytes)
+                if not text:
+                    if self.pause_duration:
+                        self._silence_sec += self.chunk_duration
+                        if self._speech_active and self._silence_sec >= self.pause_duration:
+                            self._finalize_current_text()
+                    return
+                if self.pause_duration:
+                    self._speech_active = True
+                    self._silence_sec = 0.0
                 if text:
                     self._debug(f"transcribe(combined): '{text}'")
                     self._last_activity_ts = time.time()
@@ -488,7 +552,7 @@ class LiveMultiLanguageVoskRecognition:
                     else:
                         self.current_text = text
                     print(f"[KOMBINIERT] {text}")
-                    if self.chat_assistant and self._last_chat_text != text:
+                    if self.chat_assistant and self._last_chat_text != text and not self.pause_duration:
                         allowed, reason = chatgpt_filter_decision(
                             text, self.min_chat_words, self.trivial_words
                         )
@@ -514,6 +578,15 @@ class LiveMultiLanguageVoskRecognition:
             
             elif self.mode == "all":
                 results = self.vosk.transcribe_audio(wav_bytes)
+                if not results:
+                    if self.pause_duration:
+                        self._silence_sec += self.chunk_duration
+                        if self._speech_active and self._silence_sec >= self.pause_duration:
+                            self._finalize_current_text()
+                    return
+                if self.pause_duration:
+                    self._speech_active = True
+                    self._silence_sec = 0.0
                 if results:
                     for lang, text in results.items():
                         print(f"[{lang.upper()}] {text}")
@@ -538,7 +611,7 @@ class LiveMultiLanguageVoskRecognition:
                         self.current_text += " " + text
                     else:
                         self.current_text = text
-                    if self.chat_assistant and self._last_chat_text != text:
+                    if self.chat_assistant and self._last_chat_text != text and not self.pause_duration:
                         allowed, reason = chatgpt_filter_decision(
                             text, self.min_chat_words, self.trivial_words
                         )
@@ -717,6 +790,7 @@ def run_multilang_vosk_recognition(
         confirm_before_chat=settings.confirm_before_chat,
         confirm_phrases=tuple(settings.confirm_phrases),
         reject_phrases=tuple(settings.reject_phrases),
+        pause_duration=settings.vosk_pause_duration,
     )
 
     if chat_assistant and hasattr(chat_assistant, "set_on_tts_done"):

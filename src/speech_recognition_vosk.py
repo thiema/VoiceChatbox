@@ -203,6 +203,7 @@ class LiveVoskRecognition:
                  chat_filter_debug: bool = False,
                  chat_ignore_after_tts_sec: float = 2.0,
                  auto_pause_after_sec: float = 10.0,
+                 pause_duration: float | None = None,
                  debug_logs: bool = False,
                  audio_output_device: str | int | None = None,
                  prompt_new: str | None = None,
@@ -250,6 +251,11 @@ class LiveVoskRecognition:
         self.chat_filter_debug = chat_filter_debug
         self.chat_ignore_after_tts_sec = chat_ignore_after_tts_sec
         self.auto_pause_after_sec = auto_pause_after_sec
+        self.pause_duration = pause_duration if pause_duration is not None else 0.0
+        if self.pause_duration <= 0:
+            self.pause_duration = None
+        self._silence_sec = 0.0
+        self._speech_active = False
         self._ignore_until = 0.0
         self._last_tts_text = ""
         self._pending_prefix = ""
@@ -483,6 +489,48 @@ class LiveVoskRecognition:
             self.semantic_processor.reset()
         return True
 
+    def _finalize_current_text(self) -> None:
+        if not self.pause_duration:
+            return
+        if self._awaiting_confirm:
+            return
+        if not self.listening_active:
+            self._speech_active = False
+            self._silence_sec = 0.0
+            return
+        text = (self.current_text or "").strip()
+        if self._pending_prefix:
+            if text:
+                text = f"{self._pending_prefix} {text}".strip()
+            else:
+                text = self._pending_prefix
+        if not text:
+            self._speech_active = False
+            self._silence_sec = 0.0
+            return
+        if self.chat_assistant and self._last_chat_text != text:
+            allowed, reason = chatgpt_filter_decision(text, self.min_chat_words, self.trivial_words)
+            if allowed:
+                self._last_chat_text = text
+                if self.debug_logs:
+                    print(f"[DEBUG] prompt=NEW" if not self.context_mode else "[DEBUG] prompt=KONTEXT")
+                if self.confirm_before_chat:
+                    self._request_confirmation(text, self._current_prompt())
+                else:
+                    self.chat_assistant.handle_text(
+                        text,
+                        system_prompt_override=self._current_prompt(),
+                    )
+            else:
+                self._pending_prefix = text
+                self._announce_chat_filter_block(reason)
+        self.current_text = ""
+        self._pending_prefix = ""
+        if self.semantic_processor:
+            self.semantic_processor.reset()
+        self._speech_active = False
+        self._silence_sec = 0.0
+
     def _check_commands(self, text: str) -> str | None:
         norm = self._normalize_command_text(text)
         padded = f" {norm} "
@@ -514,9 +562,16 @@ class LiveVoskRecognition:
             
             # Voice Activity Detection - überspringe leise Chunks
             if not self._detect_speech(audio_data, threshold=0.005):
-                # Keine Sprache erkannt, überspringe
+                if self.pause_duration:
+                    self._silence_sec += self.chunk_duration
+                    if self._speech_active and self._silence_sec >= self.pause_duration:
+                        self._finalize_current_text()
                 self._debug("vad: no speech")
                 return
+            else:
+                if self.pause_duration:
+                    self._speech_active = True
+                    self._silence_sec = 0.0
             
             # Transkribieren (direkt mit numpy-Array)
             self._debug("transcribe: start")
@@ -619,7 +674,7 @@ class LiveVoskRecognition:
                         self._update_display(self.current_text)
 
                     # Neue vollständige Sätze an ChatGPT senden
-                    if self.chat_assistant:
+                    if self.chat_assistant and not self.pause_duration:
                         sent_any = False
                         for sentence in result.get("new_sentences", []):
                             if sentence and sentence.text:
@@ -656,7 +711,7 @@ class LiveVoskRecognition:
                     self._update_display(self.current_text)
 
                     # Fallback: gesamten Text senden (ohne Semantik)
-                    if self.chat_assistant:
+                    if self.chat_assistant and not self.pause_duration:
                         if self._last_chat_text != text:
                             allowed, reason = chatgpt_filter_decision(
                                 text, self.min_chat_words, self.trivial_words
@@ -821,6 +876,7 @@ def run_live_vosk_recognition(model_path: Optional[str] = None, enable_chatgpt: 
         confirm_phrases=tuple(settings.confirm_phrases),
         reject_phrases=tuple(settings.reject_phrases),
         enable_audio_processing=settings.enable_audio_processing,
+        pause_duration=settings.vosk_pause_duration,
         vad_rms_threshold=settings.vad_rms_threshold,
         vad_noise_multiplier=settings.vad_noise_multiplier,
         vad_noise_alpha=settings.vad_noise_alpha,
