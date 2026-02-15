@@ -196,6 +196,12 @@ class PTTLiveRecognition:
                         if self._last_chat_text != send_text:
                             self._last_chat_text = send_text
                             self.chat_assistant.handle_text(send_text)
+                            self.current_text = ""
+                            if self.semantic_processor:
+                                self.semantic_processor.reset()
+                            self.current_text = ""
+                            if self.semantic_processor:
+                                self.semantic_processor.reset()
                     
                     # Callback aufrufen
                     if self.text_callback:
@@ -568,6 +574,7 @@ def run_ptt_live_recognition(use_vosk: bool = False, enable_chatgpt: bool = Fals
                                 if self.chat_assistant and self._last_chat_text != text:
                                     self._last_chat_text = text
                                     self.chat_assistant.handle_text(text)
+                                    self.current_text = ""
                             
                             if self.leds:
                                 self.leds.set(Status.IDLE)

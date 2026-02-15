@@ -377,6 +377,8 @@ class LiveMultiLanguageVoskRecognition:
                                 text,
                                 system_prompt_override=self._current_prompt(),
                             )
+                            self.current_text = ""
+                            self._pending_prefix = ""
                         elif self.chat_filter_debug:
                             print(f"ChatGPT-Filter: '{text}' → blockiert ({reason})")
                         else:
@@ -416,6 +418,8 @@ class LiveMultiLanguageVoskRecognition:
                                 text,
                                 system_prompt_override=self._current_prompt(),
                             )
+                            self.current_text = ""
+                            self._pending_prefix = ""
                         elif self.chat_filter_debug:
                             print(f"ChatGPT-Filter: '{text}' → blockiert ({reason})")
                         else:
@@ -459,6 +463,8 @@ class LiveMultiLanguageVoskRecognition:
                                 text,
                                 system_prompt_override=self._current_prompt(),
                             )
+                            self.current_text = ""
+                            self._pending_prefix = ""
                         elif self.chat_filter_debug:
                             print(f"ChatGPT-Filter: '{text}' → blockiert ({reason})")
                         else:

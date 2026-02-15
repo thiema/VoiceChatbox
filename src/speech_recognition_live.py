@@ -288,6 +288,7 @@ class LiveSpeechRecognition:
             self._update_display(self._display_text)
 
             if self.chat_assistant:
+                sent_any = False
                 for sentence in result.get("new_sentences", []):
                     if sentence and sentence.text:
                         allowed, reason = chatgpt_filter_decision(
@@ -297,16 +298,17 @@ class LiveSpeechRecognition:
                             if self.debug_logs:
                                 print(f"[DEBUG] prompt=NEW" if not self.context_mode else "[DEBUG] prompt=KONTEXT")
                             self.chat_assistant.handle_text(sentence.text, system_prompt_override=self._current_prompt())
+                            sent_any = True
                         else:
                             self._pending_prefix = sentence.text
                             if self.chat_filter_debug:
                                 print(f"ChatGPT-Filter: '{sentence.text}' → blockiert ({reason})")
-
-            # Nach vollständiger Frage Kontext zurücksetzen
-            if any(info.get("type") == "question" for info in result.get("semantic_info", [])):
-                self.current_text = ""
-                self._display_text = ""
-                self.semantic_processor.reset()
+                if sent_any:
+                    self.current_text = ""
+                    self._display_text = ""
+                    self._pending_prefix = ""
+                    if self.semantic_processor:
+                        self.semantic_processor.reset()
         else:
             self.current_text = text
             self._display_text = text
@@ -322,6 +324,9 @@ class LiveSpeechRecognition:
                         if self.debug_logs:
                             print(f"[DEBUG] prompt=NEW" if not self.context_mode else "[DEBUG] prompt=KONTEXT")
                         self.chat_assistant.handle_text(text, system_prompt_override=self._current_prompt())
+                        self.current_text = ""
+                        self._display_text = ""
+                        self._pending_prefix = ""
                     else:
                         self._pending_prefix = text
                         if self.chat_filter_debug:
