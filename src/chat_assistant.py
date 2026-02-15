@@ -36,7 +36,7 @@ class ChatAssistant:
     def set_on_tts_done(self, callback: Optional[Callable[[], None]]) -> None:
         self._on_tts_done = callback
 
-    def handle_text(self, text: str) -> None:
+    def handle_text(self, text: str, system_prompt_override: Optional[str] = None) -> None:
         """Send text to ChatGPT and speak the response (non-blocking)."""
         text = (text or "").strip()
         if not text:
@@ -50,15 +50,16 @@ class ChatAssistant:
             self._inflight = True
             self._last_text = text
 
-        thread = threading.Thread(target=self._run, args=(text,), daemon=True)
+        thread = threading.Thread(target=self._run, args=(text, system_prompt_override), daemon=True)
         thread.start()
 
-    def _run(self, text: str) -> None:
+    def _run(self, text: str, system_prompt_override: Optional[str]) -> None:
         try:
+            system_prompt = (system_prompt_override or self.system_prompt).strip() or self.system_prompt
             chat = self.client.chat.completions.create(
                 model=self.model_chat,
                 messages=[
-                    {"role": "system", "content": self.system_prompt},
+                    {"role": "system", "content": system_prompt},
                     {"role": "user", "content": text},
                 ],
             )
