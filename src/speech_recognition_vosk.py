@@ -560,6 +560,11 @@ class LiveVoskRecognition:
             self.oled.show_listening()
 
         self._set_listening(False, "Start")
+        # Signal: Vosk-Modell geladen und bereit für Spracheingabe
+        try:
+            play_beep_sequence(device=self.audio_output_device, announce=False)
+        except Exception as e:
+            print(f"Beep-Fehler: {e}")
         
         print("Live-Spracherkennung (Vosk, lokal) gestartet. Strg+C zum Beenden.")
         print("Sprich jetzt...")
