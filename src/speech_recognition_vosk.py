@@ -281,6 +281,8 @@ class LiveVoskRecognition:
         # Berechne RMS (Root Mean Square) für Signalpegel
         audio_float = audio.astype(np.float32) / 32768.0
         rms = np.sqrt(np.mean(audio_float ** 2))
+        if self.debug_logs:
+            self._debug(f"vad: rms={rms:.6f} threshold={threshold}")
         return rms > threshold
     
     def _record_chunk(self) -> np.ndarray:
@@ -301,6 +303,13 @@ class LiveVoskRecognition:
         # Konvertiere zu mono (falls stereo)
         if len(recording.shape) > 1:
             recording = recording[:, 0]
+        if self.debug_logs:
+            audio_float = recording.astype(np.float32) / 32768.0
+            rms = float(np.sqrt(np.mean(audio_float ** 2)))
+            peak = float(np.max(np.abs(audio_float))) if audio_float.size else 0.0
+            self._debug(
+                f"audio: frames={len(recording)} sr={self.samplerate} rms={rms:.6f} peak={peak:.6f}"
+            )
         
         # Audio-Vorverarbeitung für bessere Erkennung
         if self.enable_audio_processing:
@@ -340,6 +349,22 @@ class LiveVoskRecognition:
         if self.debug_logs:
             ts = time.strftime("%H:%M:%S")
             print(f"[DEBUG {ts}] {msg}")
+
+    def _log_input_device(self) -> None:
+        if not self.debug_logs:
+            return
+        try:
+            info = sd.query_devices(self.vosk.device_id, "input")
+            hostapi = sd.query_hostapis(info.get("hostapi", 0)).get("name", "unknown")
+            self._debug(
+                "input-device: "
+                f"id={self.vosk.device_id} name='{info.get('name')}' "
+                f"hostapi='{hostapi}' "
+                f"sr={info.get('default_samplerate')} "
+                f"max_in={info.get('max_input_channels')}"
+            )
+        except Exception as e:
+            self._debug(f"input-device: error {e}")
 
     def _current_prompt(self) -> Optional[str]:
         return self.prompt_context if self.context_mode else self.prompt_new
@@ -560,6 +585,7 @@ class LiveVoskRecognition:
 
         # Geräteauswahl anzeigen + Fallback
         self.vosk.device_id = select_input_device(self.vosk.device_spec, announce=True)
+        self._log_input_device()
         
         if self.oled:
             self.oled.show_listening()
