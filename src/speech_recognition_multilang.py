@@ -9,7 +9,14 @@ import sounddevice as sd
 from typing import Callable, Optional, Dict, List, Tuple
 from pathlib import Path
 
-from .audio_io import _resolve_device_id, select_input_device, wait_for_playback_end, play_beep_sequence, play_hangup_tone
+from .audio_io import (
+    _resolve_device_id,
+    select_input_device,
+    wait_for_playback_end,
+    play_beep_sequence,
+    play_hangup_tone,
+    stop_playback,
+)
 from .oled_display import OledDisplay
 from .chat_assistant import ChatAssistant
 from .sentence_detection import should_send_to_chatgpt, chatgpt_filter_decision, chatgpt_filter_message
@@ -330,6 +337,7 @@ class LiveMultiLanguageVoskRecognition:
     def _should_process_text(self, text: str) -> bool:
         cmd = self._check_commands(text)
         if cmd == "stop":
+            stop_playback()
             self._set_listening(False, "STOPP erkannt", context_mode=False)
             return False
         if cmd == "wake":

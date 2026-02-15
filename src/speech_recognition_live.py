@@ -10,7 +10,15 @@ from typing import Callable, Optional
 from openai import OpenAI
 
 from .config import load_settings
-from .audio_io import _resolve_device_id, select_input_device, wait_for_playback_end, is_playback_active, play_beep_sequence, play_hangup_tone
+from .audio_io import (
+    _resolve_device_id,
+    select_input_device,
+    wait_for_playback_end,
+    is_playback_active,
+    play_beep_sequence,
+    play_hangup_tone,
+    stop_playback,
+)
 from .oled_display import OledDisplay
 from .sentence_detection import (
     SemanticSpeechRecognition,
@@ -242,6 +250,7 @@ class LiveSpeechRecognition:
 
         cmd = self._check_commands(text)
         if cmd == "stop":
+            stop_playback()
             self._set_listening(False, "STOPP erkannt", context_mode=False)
             self._debug("command: stop")
             return

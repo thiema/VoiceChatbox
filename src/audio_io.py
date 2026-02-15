@@ -19,6 +19,14 @@ def wait_for_playback_end(poll_interval: float = 0.05) -> None:
     while _playback_active.is_set():
         time.sleep(poll_interval)
 
+def stop_playback() -> None:
+    """Stop any ongoing playback immediately."""
+    try:
+        sd.stop()
+    except Exception:
+        pass
+    _playback_active.clear()
+
 def _get_input_devices() -> list[tuple[int, dict]]:
     """Return list of (device_id, device_info) for input-capable devices."""
     try:
