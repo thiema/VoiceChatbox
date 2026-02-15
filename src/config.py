@@ -51,6 +51,7 @@ class Settings:
     vad_rms_threshold: float
     vad_noise_multiplier: float
     vad_noise_alpha: float
+    announce_chat_request: bool
 
 def load_settings() -> Settings:
     key = os.getenv("OPENAI_API_KEY", "").strip()
@@ -74,6 +75,7 @@ def load_settings() -> Settings:
     vad_rms_threshold = float(os.getenv("VAD_RMS_THRESHOLD", "0.01"))
     vad_noise_multiplier = float(os.getenv("VAD_NOISE_MULTIPLIER", "3.0"))
     vad_noise_alpha = float(os.getenv("VAD_NOISE_ALPHA", "0.1"))
+    announce_chat_request = _get_bool("ANNOUNCE_CHAT_REQUEST", True)
     chat_system_prompt_new = os.getenv(
         "CHAT_SYSTEM_PROMPT_NEW",
         "Du behandelst jede Eingabe als eigenständige, neue Frage. "
@@ -123,4 +125,5 @@ def load_settings() -> Settings:
         vad_rms_threshold=vad_rms_threshold,
         vad_noise_multiplier=vad_noise_multiplier,
         vad_noise_alpha=vad_noise_alpha,
+        announce_chat_request=announce_chat_request,
     )

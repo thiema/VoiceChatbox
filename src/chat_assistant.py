@@ -33,6 +33,8 @@ class ChatAssistant:
         self.system_prompt = system_prompt
         self.echo_input_before_chat = echo_input_before_chat
         self.echo_input_local_tts = echo_input_local_tts
+        self.announce_chat_request = announce_chat_request
+        self.echo_input_local_tts = echo_input_local_tts
         self._inflight = False
         self._last_text: Optional[str] = None
         self._lock = threading.Lock()

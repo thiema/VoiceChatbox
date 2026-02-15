@@ -686,6 +686,7 @@ def run_live_vosk_recognition(model_path: Optional[str] = None, enable_chatgpt: 
             audio_output_device=settings.audio_output_device,
             echo_input_before_chat=settings.echo_input_before_chat,
             echo_input_local_tts=settings.echo_input_local_tts,
+            announce_chat_request=settings.announce_chat_request,
         )
 
     # Live-Spracherkennung starten
