@@ -351,8 +351,20 @@ class LiveMultiLanguageVoskRecognition:
         message = f"Ich habe verstanden: {text}. Sag OK oder Nein."
         self._last_tts_text = (message or "").strip().lower()
         self._ignore_until = time.time() + self.chat_ignore_after_tts_sec
-        if not self.chat_assistant.speak_blocking(message, notify=False):
+        try:
+            if hasattr(self.chat_assistant, "speak_blocking"):
+                ok = self.chat_assistant.speak_blocking(message, notify=False)
+            else:
+                self.chat_assistant.speak(message, notify=False)
+                ok = True
+        except Exception as e:
+            if self.debug_logs:
+                print(f"[DEBUG] confirm: tts failed ({e})")
             return False
+        if not ok:
+            return False
+        if self.debug_logs:
+            print(f"[DEBUG] confirm: ask '{text}'")
         self._awaiting_confirm = True
         self._pending_confirm_text = text
         self._pending_confirm_prompt = system_prompt_override
