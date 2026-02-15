@@ -418,14 +418,15 @@ class SmartMultiLanguageVoskRecognition:
     def _request_confirmation(self, text: str, system_prompt_override: Optional[str]) -> bool:
         if self._awaiting_confirm or not self.chat_assistant:
             return False
+        message = f"Ich habe verstanden: {text}. Sag OK oder Nein."
+        self._last_tts_text = (message or "").strip().lower()
+        self._ignore_until = time.time() + self.chat_ignore_after_tts_sec
+        if not self.chat_assistant.speak_blocking(message, notify=False):
+            return False
         self._awaiting_confirm = True
         self._pending_confirm_text = text
         self._pending_confirm_prompt = system_prompt_override
         self._confirm_deadline = time.time() + self.confirm_timeout_sec
-        message = f"Ich habe verstanden: {text}. Sag OK oder Nein."
-        self._last_tts_text = (message or "").strip().lower()
-        self._ignore_until = time.time() + self.chat_ignore_after_tts_sec
-        self.chat_assistant.speak(message, notify=False)
         return True
 
     def _cancel_confirmation(self) -> None:

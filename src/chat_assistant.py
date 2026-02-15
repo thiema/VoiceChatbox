@@ -70,6 +70,18 @@ class ChatAssistant:
         thread = threading.Thread(target=_speak, daemon=True)
         thread.start()
 
+    def speak_blocking(self, text: str, notify: bool = True) -> bool:
+        """Speak text via TTS and wait for completion. Returns success."""
+        text = (text or "").strip()
+        if not text:
+            return False
+        try:
+            self._tts_play(text, notify=notify)
+            return True
+        except Exception as e:
+            print(f"TTS-Fehler: {e}")
+            return False
+
     def _run(self, text: str, system_prompt_override: Optional[str]) -> None:
         try:
             if self.echo_input_before_chat:
