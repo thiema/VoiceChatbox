@@ -47,6 +47,7 @@ class Settings:
     chat_system_prompt_context: str
     echo_input_before_chat: bool
     echo_input_local_tts: bool
+    enable_audio_processing: bool
 
 def load_settings() -> Settings:
     key = os.getenv("OPENAI_API_KEY", "").strip()
@@ -66,6 +67,7 @@ def load_settings() -> Settings:
     debug_logs = _get_bool("DEBUG_LOGS", False)
     echo_input_before_chat = _get_bool("ECHO_INPUT_BEFORE_CHAT", True)
     echo_input_local_tts = _get_bool("ECHO_INPUT_LOCAL_TTS", True)
+    enable_audio_processing = _get_bool("ENABLE_AUDIO_PROCESSING", True)
     chat_system_prompt_new = os.getenv(
         "CHAT_SYSTEM_PROMPT_NEW",
         "Du behandelst jede Eingabe als eigenständige, neue Frage. "
@@ -111,4 +113,5 @@ def load_settings() -> Settings:
         chat_system_prompt_context=chat_system_prompt_context,
         echo_input_before_chat=echo_input_before_chat,
         echo_input_local_tts=echo_input_local_tts,
+        enable_audio_processing=enable_audio_processing,
     )

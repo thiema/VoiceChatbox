@@ -310,6 +310,8 @@ class LiveVoskRecognition:
             self._debug(
                 f"audio: frames={len(recording)} sr={self.samplerate} rms={rms:.6f} peak={peak:.6f}"
             )
+            if peak >= 0.98:
+                self._debug("audio: clipping detected (peak >= 0.98)")
         
         # Audio-Vorverarbeitung für bessere Erkennung
         if self.enable_audio_processing:
@@ -684,6 +686,7 @@ def run_live_vosk_recognition(model_path: Optional[str] = None, enable_chatgpt: 
         prompt_new=settings.chat_system_prompt_new,
         prompt_context=settings.chat_system_prompt_context,
         chat_assistant=chat_assistant,
+        enable_audio_processing=settings.enable_audio_processing,
     )
 
     if chat_assistant and hasattr(chat_assistant, "set_on_tts_done"):
