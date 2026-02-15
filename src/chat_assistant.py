@@ -18,7 +18,7 @@ class ChatAssistant:
         tts_voice: str,
         audio_output_device: str | int | None = None,
         announce_output: bool = True,
-        on_tts_done: Optional[Callable[[str], None]] = None,
+        on_tts_done: Optional[Callable[[], None]] = None,
         system_prompt: str = "Du bist ein hilfreicher, knapper Sprachassistent.",
     ) -> None:
         self.client = client
@@ -30,37 +30,35 @@ class ChatAssistant:
         self._on_tts_done = on_tts_done
         self.system_prompt = system_prompt
         self._inflight = False
-        self._last_request: Optional[tuple[str, str]] = None
+        self._last_text: Optional[str] = None
         self._lock = threading.Lock()
 
-    def set_on_tts_done(self, callback: Optional[Callable[[str], None]]) -> None:
+    def set_on_tts_done(self, callback: Optional[Callable[[], None]]) -> None:
         self._on_tts_done = callback
 
-    def handle_text(self, text: str, system_prompt_override: Optional[str] = None) -> None:
+    def handle_text(self, text: str) -> None:
         """Send text to ChatGPT and speak the response (non-blocking)."""
         text = (text or "").strip()
         if not text:
             return
-        system_prompt = (system_prompt_override or self.system_prompt).strip()
-        request_key = (text, system_prompt)
+        if self._last_text == text:
+            return
 
         with self._lock:
             if self._inflight:
                 return
-            if self._last_request == request_key:
-                return
             self._inflight = True
-            self._last_request = request_key
+            self._last_text = text
 
-        thread = threading.Thread(target=self._run, args=(text, system_prompt), daemon=True)
+        thread = threading.Thread(target=self._run, args=(text,), daemon=True)
         thread.start()
 
-    def _run(self, text: str, system_prompt: str) -> None:
+    def _run(self, text: str) -> None:
         try:
             chat = self.client.chat.completions.create(
                 model=self.model_chat,
                 messages=[
-                    {"role": "system", "content": system_prompt},
+                    {"role": "system", "content": self.system_prompt},
                     {"role": "user", "content": text},
                 ],
             )
@@ -88,6 +86,6 @@ class ChatAssistant:
         play_wav_bytes(wav_bytes, device=self.audio_output_device, announce=announce)
         if self._on_tts_done:
             try:
-                self._on_tts_done(text)
+                self._on_tts_done()
             except Exception:
                 pass

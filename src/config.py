@@ -88,7 +88,7 @@ def load_settings() -> Settings:
         gpio_led_yellow=int(os.getenv("GPIO_LED_YELLOW", "20")),
         gpio_led_green=int(os.getenv("GPIO_LED_GREEN", "21")),
 
-        audio_input_device=os.getenv("AUDIO_INPUT_DEVICE") or None,
+        audio_input_device=os.getenv("AUDIO_INPUT_DEVICE") or "0",
         audio_output_device=os.getenv("AUDIO_OUTPUT_DEVICE") or "snd_rpi_hifiberry_dac: HifiBerry DAC HiFi pcm5102a-hifi-0",
         
         vosk_model_path=os.getenv("VOSK_MODEL_PATH") or None,
