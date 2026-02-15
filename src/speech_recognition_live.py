@@ -47,7 +47,10 @@ class LiveSpeechRecognition:
                  audio_output_device: str | int | None = None,
                  prompt_new: str | None = None,
                  prompt_context: str | None = None,
-                 chat_assistant: Optional[ChatAssistant] = None):
+                 chat_assistant: Optional[ChatAssistant] = None,
+                 confirm_before_chat: bool = False,
+                 confirm_phrases: tuple[str, ...] | None = None,
+                 reject_phrases: tuple[str, ...] | None = None):
         self.client = client
         self.model_stt = model_stt
         self.device_spec = device
@@ -86,6 +89,12 @@ class LiveSpeechRecognition:
         self.auto_pause_after_sec = auto_pause_after_sec
         self.debug_logs = debug_logs
         self.audio_output_device = audio_output_device
+        self.confirm_before_chat = confirm_before_chat
+        self.confirm_phrases = confirm_phrases or ("ok", "okay", "ja", "yes")
+        self.reject_phrases = reject_phrases or ("nein", "no", "falsch", "abbruch")
+        self._awaiting_confirm = False
+        self._pending_confirm_text: Optional[str] = None
+        self._pending_confirm_prompt: Optional[str] = None
         self._ignore_until = 0.0
         self._last_tts_text = ""
         self._pending_prefix = ""
@@ -208,6 +217,52 @@ class LiveSpeechRecognition:
         text = re.sub(r"[^a-z0-9äöüß ]+", " ", text)
         return re.sub(r"\s+", " ", text).strip()
 
+    def _check_confirmation(self, text: str) -> str | None:
+        norm = self._normalize_command_text(text)
+        padded = f" {norm} "
+        if any(f" {phrase} " in padded for phrase in self.confirm_phrases):
+            return "confirm"
+        if any(f" {phrase} " in padded for phrase in self.reject_phrases):
+            return "reject"
+        return None
+
+    def _request_confirmation(self, text: str, system_prompt_override: Optional[str]) -> None:
+        if self._awaiting_confirm or not self.chat_assistant:
+            return
+        self._awaiting_confirm = True
+        self._pending_confirm_text = text
+        self._pending_confirm_prompt = system_prompt_override
+        message = f"Ich habe verstanden: {text}. Sag OK oder Nein."
+        self._last_tts_text = (message or "").strip().lower()
+        self._ignore_until = time.time() + self.chat_ignore_after_tts_sec
+        self.chat_assistant.speak(message, notify=False)
+
+    def _handle_confirmation(self, text: str) -> bool:
+        if not self._awaiting_confirm:
+            return False
+        decision = self._check_confirmation(text)
+        if not decision:
+            return True
+        if decision == "confirm" and self.chat_assistant and self._pending_confirm_text:
+            if self.debug_logs:
+                print(f"[DEBUG] confirm: send '{self._pending_confirm_text}'")
+            self.chat_assistant.handle_text(
+                self._pending_confirm_text,
+                system_prompt_override=self._pending_confirm_prompt,
+            )
+        else:
+            if self.chat_assistant:
+                self.chat_assistant.speak("Okay, verworfen.", notify=False)
+        self._awaiting_confirm = False
+        self._pending_confirm_text = None
+        self._pending_confirm_prompt = None
+        self.current_text = ""
+        self._display_text = ""
+        self._pending_prefix = ""
+        if self.semantic_processor:
+            self.semantic_processor.reset()
+        return True
+
     def _check_commands(self, text: str) -> str | None:
         norm = self._normalize_command_text(text)
         padded = f" {norm} "
@@ -241,6 +296,9 @@ class LiveSpeechRecognition:
                 if self.chat_filter_debug:
                     print("ChatGPT-Filter: blockiert (Echo von TTS)")
                 self._debug("ignore: tts echo")
+                return
+        if self._awaiting_confirm:
+            if self._handle_confirmation(text):
                 return
         # Prüfe, ob Text bereits vorhanden ist (verhindert Doppel-Ausgabe)
         if self.current_text and text.lower() in self.current_text.lower():
@@ -326,8 +384,11 @@ class LiveSpeechRecognition:
                         if allowed:
                             if self.debug_logs:
                                 print(f"[DEBUG] prompt=NEW" if not self.context_mode else "[DEBUG] prompt=KONTEXT")
-                            self.chat_assistant.handle_text(sentence.text, system_prompt_override=self._current_prompt())
-                            sent_any = True
+                            if self.confirm_before_chat:
+                                self._request_confirmation(sentence.text, self._current_prompt())
+                            else:
+                                self.chat_assistant.handle_text(sentence.text, system_prompt_override=self._current_prompt())
+                                sent_any = True
                         else:
                             self._pending_prefix = sentence.text
                             self._announce_chat_filter_block(reason)
@@ -353,10 +414,13 @@ class LiveSpeechRecognition:
                         self._last_chat_text = text
                         if self.debug_logs:
                             print(f"[DEBUG] prompt=NEW" if not self.context_mode else "[DEBUG] prompt=KONTEXT")
-                        self.chat_assistant.handle_text(text, system_prompt_override=self._current_prompt())
-                        self.current_text = ""
-                        self._display_text = ""
-                        self._pending_prefix = ""
+                        if self.confirm_before_chat:
+                            self._request_confirmation(text, self._current_prompt())
+                        else:
+                            self.chat_assistant.handle_text(text, system_prompt_override=self._current_prompt())
+                            self.current_text = ""
+                            self._display_text = ""
+                            self._pending_prefix = ""
                     else:
                         self._pending_prefix = text
                         self._announce_chat_filter_block(reason)
@@ -570,6 +634,9 @@ def run_live_recognition(enable_chatgpt: bool = False):
         prompt_new=settings.chat_system_prompt_new,
         prompt_context=settings.chat_system_prompt_context,
         chat_assistant=chat_assistant,
+        confirm_before_chat=settings.confirm_before_chat,
+        confirm_phrases=tuple(settings.confirm_phrases),
+        reject_phrases=tuple(settings.reject_phrases),
     )
 
     if chat_assistant and hasattr(chat_assistant, "set_on_tts_done"):

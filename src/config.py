@@ -52,6 +52,9 @@ class Settings:
     vad_noise_multiplier: float
     vad_noise_alpha: float
     announce_chat_request: bool
+    confirm_before_chat: bool
+    confirm_phrases: list[str]
+    reject_phrases: list[str]
 
 def load_settings() -> Settings:
     key = os.getenv("OPENAI_API_KEY", "").strip()
@@ -76,6 +79,9 @@ def load_settings() -> Settings:
     vad_noise_multiplier = float(os.getenv("VAD_NOISE_MULTIPLIER", "3.0"))
     vad_noise_alpha = float(os.getenv("VAD_NOISE_ALPHA", "0.1"))
     announce_chat_request = _get_bool("ANNOUNCE_CHAT_REQUEST", True)
+    confirm_before_chat = _get_bool("CONFIRM_BEFORE_CHAT", False)
+    confirm_phrases = [p.strip().lower() for p in os.getenv("CONFIRM_PHRASES", "ok,okay,ja,yes").split(",") if p.strip()]
+    reject_phrases = [p.strip().lower() for p in os.getenv("REJECT_PHRASES", "nein,no,falsch,abbruch").split(",") if p.strip()]
     chat_system_prompt_new = os.getenv(
         "CHAT_SYSTEM_PROMPT_NEW",
         "Du behandelst jede Eingabe als eigenständige, neue Frage. "
@@ -126,4 +132,7 @@ def load_settings() -> Settings:
         vad_noise_multiplier=vad_noise_multiplier,
         vad_noise_alpha=vad_noise_alpha,
         announce_chat_request=announce_chat_request,
+        confirm_before_chat=confirm_before_chat,
+        confirm_phrases=confirm_phrases,
+        reject_phrases=reject_phrases,
     )
