@@ -1,5 +1,6 @@
 from __future__ import annotations
 import io
+import os
 import sys
 import time
 import threading
@@ -135,6 +136,14 @@ def select_input_device(device_spec: str | int | None, announce: bool = True) ->
     if announce:
         _print_input_devices()
     device_id = _resolve_device_id(device_spec)
+    if device_id is None and device_spec:
+        retry_sec = float(os.getenv("INPUT_DEVICE_RETRY_SEC", "5.0"))
+        retry_interval = float(os.getenv("INPUT_DEVICE_RETRY_INTERVAL", "0.5"))
+        if retry_sec > 0 and retry_interval > 0:
+            deadline = time.time() + retry_sec
+            while time.time() < deadline and device_id is None:
+                time.sleep(retry_interval)
+                device_id = _resolve_device_id(device_spec)
     if device_id is None:
         input_devices = _get_input_devices()
         if input_devices:
@@ -162,6 +171,14 @@ def select_output_device(device_spec: str | int | None, announce: bool = True) -
     if announce:
         _print_output_devices()
     device_id = _resolve_device_id(device_spec)
+    if device_id is None and device_spec:
+        retry_sec = float(os.getenv("OUTPUT_DEVICE_RETRY_SEC", "5.0"))
+        retry_interval = float(os.getenv("OUTPUT_DEVICE_RETRY_INTERVAL", "0.5"))
+        if retry_sec > 0 and retry_interval > 0:
+            deadline = time.time() + retry_sec
+            while time.time() < deadline and device_id is None:
+                time.sleep(retry_interval)
+                device_id = _resolve_device_id(device_spec)
     if device_id is not None:
         try:
             dev_info = sd.query_devices(device_id)
