@@ -334,8 +334,8 @@ class LiveVoskRecognition:
             )
         return rms > effective_threshold
     
-    def _record_chunk(self) -> np.ndarray:
-        """Nimmt einen Audio-Chunk auf und gibt numpy-Array zurück."""
+    def _record_chunk(self) -> tuple[np.ndarray, np.ndarray]:
+        """Nimmt einen Audio-Chunk auf und gibt (raw, processed) zurück."""
         channels = 1
         dtype = "int16"
         frames_to_record = int(self.samplerate * self.chunk_duration)
@@ -362,6 +362,8 @@ class LiveVoskRecognition:
             if peak >= 0.98:
                 self._debug("audio: clipping detected (peak >= 0.98)")
         
+        raw_recording = recording.copy()
+
         # Audio-Vorverarbeitung für bessere Erkennung
         if self.enable_audio_processing:
             # High-Pass Filter (entfernt tiefe Frequenzen/Rauschen)
@@ -369,8 +371,10 @@ class LiveVoskRecognition:
             
             # Normalisierung
             recording = self._normalize_audio(recording)
+        else:
+            recording = raw_recording
         
-        return recording
+        return raw_recording, recording
     
     def _update_display(self, text: str) -> None:
         """Aktualisiere OLED-Display mit Laufband-Text."""
@@ -591,14 +595,14 @@ class LiveVoskRecognition:
                 return
             # Audio aufnehmen
             self._debug("record_chunk: start")
-            audio_data = self._record_chunk()
+            raw_audio, audio_data = self._record_chunk()
             self._debug(f"record_chunk: done len={len(audio_data)}")
             
             if not self.is_running:
                 return
             
             # Voice Activity Detection - überspringe leise Chunks
-            if not self._detect_speech(audio_data, threshold=0.005):
+            if not self._detect_speech(raw_audio, threshold=0.005):
                 if self.pause_duration:
                     self._silence_sec += self.chunk_duration
                     if self._speech_active and self._silence_sec >= self.pause_duration:
