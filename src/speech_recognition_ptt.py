@@ -4,6 +4,7 @@ import wave
 import numpy as np
 import sounddevice as sd
 import time
+import re
 from typing import Callable, Optional
 from openai import OpenAI
 
@@ -22,7 +23,11 @@ class PTTLiveRecognition:
     def __init__(self, client: OpenAI, model_stt: str, ptt: PushToTalk, 
                  leds: Optional[LedStatus] = None, device: Optional[str | int] = None,
                  enable_semantic: bool = True, language: str = "de",
-                 chat_assistant: Optional[ChatAssistant] = None):
+                 chat_assistant: Optional[ChatAssistant] = None,
+                 confirm_before_chat: bool = False,
+                 confirm_phrases: tuple[str, ...] | None = None,
+                 reject_phrases: tuple[str, ...] | None = None,
+                 confirm_timeout_sec: float = 6.0):
         self.client = client
         self.model_stt = model_stt
         self.ptt = ptt
@@ -37,6 +42,10 @@ class PTTLiveRecognition:
         self.semantic_processor = SemanticSpeechRecognition(language=language) if enable_semantic else None
         self.chat_assistant = chat_assistant
         self._last_chat_text: Optional[str] = None
+        self.confirm_before_chat = confirm_before_chat
+        self.confirm_phrases = confirm_phrases or ("ok", "okay", "ja", "yes")
+        self.reject_phrases = reject_phrases or ("nein", "no", "falsch", "abbruch")
+        self.confirm_timeout_sec = confirm_timeout_sec
     
     def set_text_callback(self, callback: Callable[[str], None]) -> None:
         """Setze Callback-Funktion, die bei neuem Text aufgerufen wird."""
@@ -71,6 +80,48 @@ class PTTLiveRecognition:
         """Aktualisiere OLED-Display mit Laufband-Text."""
         if self.oled and self.oled.device:
             self.oled.show_text_scroll(text)
+
+    def _normalize_text(self, text: str) -> str:
+        text = (text or "").lower()
+        text = re.sub(r"[^a-z0-9äöüß ]+", " ", text)
+        return re.sub(r"\s+", " ", text).strip()
+
+    def _check_confirmation(self, text: str) -> str | None:
+        norm = self._normalize_text(text)
+        padded = f" {norm} "
+        if any(f" {phrase} " in padded for phrase in self.confirm_phrases):
+            return "confirm"
+        if any(f" {phrase} " in padded for phrase in self.reject_phrases):
+            return "reject"
+        return None
+
+    def _wait_for_press_timeout(self, timeout_sec: float) -> bool:
+        deadline = time.time() + timeout_sec
+        while time.time() < deadline:
+            if self.ptt.is_pressed:
+                return True
+            time.sleep(0.05)
+        return False
+
+    def _confirm_and_send(self, text: str) -> bool:
+        if not self.chat_assistant or not self.confirm_before_chat:
+            return False
+        self.chat_assistant.speak(f"Ich habe verstanden: {text}. Sag OK oder Nein.", notify=False)
+        if not self._wait_for_press_timeout(self.confirm_timeout_sec):
+            self.chat_assistant.speak("Okay, verworfen.", notify=False)
+            return True
+        wav_bytes = record_while_pressed(
+            lambda: self.ptt.is_pressed,
+            samplerate=self.samplerate,
+            device=self.device_id
+        )
+        confirm_text = self._transcribe_audio(wav_bytes)
+        decision = self._check_confirmation(confirm_text)
+        if decision == "confirm":
+            self.chat_assistant.handle_text(text)
+        else:
+            self.chat_assistant.speak("Okay, verworfen.", notify=False)
+        return True
     
     def start(self, oled: Optional[OledDisplay] = None) -> None:
         """Starte Push-to-Talk Live-Spracherkennung."""
@@ -195,7 +246,8 @@ class PTTLiveRecognition:
                                 send_text = corrected
                         if self._last_chat_text != send_text:
                             self._last_chat_text = send_text
-                            self.chat_assistant.handle_text(send_text)
+                            if not self._confirm_and_send(send_text):
+                                self.chat_assistant.handle_text(send_text)
                             self.current_text = ""
                             if self.semantic_processor:
                                 self.semantic_processor.reset()
@@ -241,7 +293,11 @@ class PTTLiveVoskRecognition:
     def __init__(self, vosk_recognizer, ptt: PushToTalk, 
                  leds: Optional[LedStatus] = None,
                  enable_semantic: bool = True, language: str = "de",
-                 chat_assistant: Optional[ChatAssistant] = None):
+                 chat_assistant: Optional[ChatAssistant] = None,
+                 confirm_before_chat: bool = False,
+                 confirm_phrases: tuple[str, ...] | None = None,
+                 reject_phrases: tuple[str, ...] | None = None,
+                 confirm_timeout_sec: float = 6.0):
         from .speech_recognition_vosk import VoskSpeechRecognition
         self.vosk = vosk_recognizer
         self.ptt = ptt
@@ -255,6 +311,10 @@ class PTTLiveVoskRecognition:
         self.semantic_processor = SemanticSpeechRecognition(language=language) if enable_semantic else None
         self.chat_assistant = chat_assistant
         self._last_chat_text: Optional[str] = None
+        self.confirm_before_chat = confirm_before_chat
+        self.confirm_phrases = confirm_phrases or ("ok", "okay", "ja", "yes")
+        self.reject_phrases = reject_phrases or ("nein", "no", "falsch", "abbruch")
+        self.confirm_timeout_sec = confirm_timeout_sec
     
     def set_text_callback(self, callback: Callable[[str], None]) -> None:
         """Setze Callback-Funktion, die bei neuem Text aufgerufen wird."""
@@ -264,6 +324,48 @@ class PTTLiveVoskRecognition:
         """Aktualisiere OLED-Display mit Laufband-Text."""
         if self.oled and self.oled.device:
             self.oled.show_text_scroll(text)
+
+    def _normalize_text(self, text: str) -> str:
+        text = (text or "").lower()
+        text = re.sub(r"[^a-z0-9äöüß ]+", " ", text)
+        return re.sub(r"\s+", " ", text).strip()
+
+    def _check_confirmation(self, text: str) -> str | None:
+        norm = self._normalize_text(text)
+        padded = f" {norm} "
+        if any(f" {phrase} " in padded for phrase in self.confirm_phrases):
+            return "confirm"
+        if any(f" {phrase} " in padded for phrase in self.reject_phrases):
+            return "reject"
+        return None
+
+    def _wait_for_press_timeout(self, timeout_sec: float) -> bool:
+        deadline = time.time() + timeout_sec
+        while time.time() < deadline:
+            if self.ptt.is_pressed:
+                return True
+            time.sleep(0.05)
+        return False
+
+    def _confirm_and_send(self, text: str) -> bool:
+        if not self.chat_assistant or not self.confirm_before_chat:
+            return False
+        self.chat_assistant.speak(f"Ich habe verstanden: {text}. Sag OK oder Nein.", notify=False)
+        if not self._wait_for_press_timeout(self.confirm_timeout_sec):
+            self.chat_assistant.speak("Okay, verworfen.", notify=False)
+            return True
+        wav_bytes = record_while_pressed(
+            lambda: self.ptt.is_pressed,
+            samplerate=self.samplerate,
+            device=self.vosk.device_id
+        )
+        confirm_text = self.vosk.transcribe_audio(wav_bytes)
+        decision = self._check_confirmation(confirm_text)
+        if decision == "confirm":
+            self.chat_assistant.handle_text(text)
+        else:
+            self.chat_assistant.speak("Okay, verworfen.", notify=False)
+        return True
     
     def start(self, oled: Optional[OledDisplay] = None) -> None:
         """Starte Push-to-Talk Live-Spracherkennung mit Vosk."""
@@ -388,7 +490,8 @@ class PTTLiveVoskRecognition:
                                 send_text = corrected
                         if self._last_chat_text != send_text:
                             self._last_chat_text = send_text
-                            self.chat_assistant.handle_text(send_text)
+                            if not self._confirm_and_send(send_text):
+                                self.chat_assistant.handle_text(send_text)
                     
                     # Callback aufrufen
                     if self.text_callback:
@@ -503,7 +606,11 @@ def run_ptt_live_recognition(use_vosk: bool = False, enable_chatgpt: bool = Fals
             
             # Erstelle Wrapper für PTT
             class PTTMultiLangVoskRecognition:
-                def __init__(self, multilang_vosk, ptt, leds, chat_assistant=None):
+                def __init__(self, multilang_vosk, ptt, leds, chat_assistant=None,
+                             confirm_before_chat: bool = False,
+                             confirm_phrases: tuple[str, ...] | None = None,
+                             reject_phrases: tuple[str, ...] | None = None,
+                             confirm_timeout_sec: float = 6.0):
                     self.multilang_vosk = multilang_vosk
                     self.ptt = ptt
                     self.leds = leds
@@ -514,6 +621,53 @@ def run_ptt_live_recognition(use_vosk: bool = False, enable_chatgpt: bool = Fals
                     self.mode = "best"
                     self.chat_assistant = chat_assistant
                     self._last_chat_text = None
+                    self.confirm_before_chat = confirm_before_chat
+                    self.confirm_phrases = confirm_phrases or ("ok", "okay", "ja", "yes")
+                    self.reject_phrases = reject_phrases or ("nein", "no", "falsch", "abbruch")
+                    self.confirm_timeout_sec = confirm_timeout_sec
+
+                def _normalize_text(self, text: str) -> str:
+                    text = (text or "").lower()
+                    text = re.sub(r"[^a-z0-9äöüß ]+", " ", text)
+                    return re.sub(r"\s+", " ", text).strip()
+
+                def _check_confirmation(self, text: str) -> str | None:
+                    norm = self._normalize_text(text)
+                    padded = f" {norm} "
+                    if any(f" {phrase} " in padded for phrase in self.confirm_phrases):
+                        return "confirm"
+                    if any(f" {phrase} " in padded for phrase in self.reject_phrases):
+                        return "reject"
+                    return None
+
+                def _wait_for_press_timeout(self, timeout_sec: float) -> bool:
+                    deadline = time.time() + timeout_sec
+                    while time.time() < deadline:
+                        if self.ptt.is_pressed:
+                            return True
+                        time.sleep(0.05)
+                    return False
+
+                def _confirm_and_send(self, text: str) -> bool:
+                    if not self.chat_assistant or not self.confirm_before_chat:
+                        return False
+                    self.chat_assistant.speak(f"Ich habe verstanden: {text}. Sag OK oder Nein.", notify=False)
+                    if not self._wait_for_press_timeout(self.confirm_timeout_sec):
+                        self.chat_assistant.speak("Okay, verworfen.", notify=False)
+                        return True
+                    wav_bytes = record_while_pressed(
+                        lambda: self.ptt.is_pressed,
+                        samplerate=self.samplerate,
+                        device=self.multilang_vosk.device_id
+                    )
+                    lang, confirm_text = self.multilang_vosk.transcribe_audio_best(wav_bytes)
+                    _ = lang
+                    decision = self._check_confirmation(confirm_text)
+                    if decision == "confirm":
+                        self.chat_assistant.handle_text(text)
+                    else:
+                        self.chat_assistant.speak("Okay, verworfen.", notify=False)
+                    return True
                 
                 def start(self, oled=None):
                     self.oled = oled
@@ -583,7 +737,8 @@ def run_ptt_live_recognition(use_vosk: bool = False, enable_chatgpt: bool = Fals
                                 # ChatGPT: erst nach Loslassen senden (einmal pro Aufnahme)
                                 if self.chat_assistant and self._last_chat_text != text:
                                     self._last_chat_text = text
-                                    self.chat_assistant.handle_text(text)
+                                    if not self._confirm_and_send(text):
+                                        self.chat_assistant.handle_text(text)
                                     self.current_text = ""
                             
                             if self.leds:
@@ -603,7 +758,16 @@ def run_ptt_live_recognition(use_vosk: bool = False, enable_chatgpt: bool = Fals
                     if self.oled:
                         self.oled.clear()
             
-            recognizer = PTTMultiLangVoskRecognition(multilang_vosk, ptt, leds, chat_assistant)
+            recognizer = PTTMultiLangVoskRecognition(
+                multilang_vosk,
+                ptt,
+                leds,
+                chat_assistant,
+                confirm_before_chat=settings.confirm_before_chat,
+                confirm_phrases=tuple(settings.confirm_phrases),
+                reject_phrases=tuple(settings.reject_phrases),
+                confirm_timeout_sec=settings.confirm_timeout_sec,
+            )
             recognizer.start(oled=oled)
         else:
             # Einsprachige Vosk-Erkennung
@@ -612,7 +776,16 @@ def run_ptt_live_recognition(use_vosk: bool = False, enable_chatgpt: bool = Fals
             model_path = settings.vosk_model_path or os.getenv("VOSK_MODEL_PATH", "models/vosk-model-de-0.22")
             vosk = VoskSpeechRecognition(model_path, device=settings.audio_input_device)
             
-            recognizer = PTTLiveVoskRecognition(vosk, ptt, leds, chat_assistant=chat_assistant)
+            recognizer = PTTLiveVoskRecognition(
+                vosk,
+                ptt,
+                leds,
+                chat_assistant=chat_assistant,
+                confirm_before_chat=settings.confirm_before_chat,
+                confirm_phrases=tuple(settings.confirm_phrases),
+                reject_phrases=tuple(settings.reject_phrases),
+                confirm_timeout_sec=settings.confirm_timeout_sec,
+            )
             recognizer.start(oled=oled)
     else:
         # OpenAI (Cloud)
@@ -625,6 +798,10 @@ def run_ptt_live_recognition(use_vosk: bool = False, enable_chatgpt: bool = Fals
             leds=leds,
             device=settings.audio_input_device,
             chat_assistant=chat_assistant,
+            confirm_before_chat=settings.confirm_before_chat,
+            confirm_phrases=tuple(settings.confirm_phrases),
+            reject_phrases=tuple(settings.reject_phrases),
+            confirm_timeout_sec=settings.confirm_timeout_sec,
         )
         recognizer.start(oled=oled)
 
