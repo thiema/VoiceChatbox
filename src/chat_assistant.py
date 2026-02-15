@@ -21,7 +21,6 @@ class ChatAssistant:
         on_tts_done: Optional[Callable[[], None]] = None,
         system_prompt: str = "Du bist ein hilfreicher, knapper Sprachassistent.",
         echo_input_before_chat: bool = True,
-        echo_input_local_tts: bool = True,
     ) -> None:
         self.client = client
         self.model_chat = model_chat
@@ -32,13 +31,6 @@ class ChatAssistant:
         self._on_tts_done = on_tts_done
         self.system_prompt = system_prompt
         self.echo_input_before_chat = echo_input_before_chat
-        self.echo_input_local_tts = echo_input_local_tts
-        self.announce_chat_request = announce_chat_request
-        self.echo_input_local_tts = echo_input_local_tts
-        self.announce_chat_request = announce_chat_request
-        self.echo_input_local_tts = echo_input_local_tts
-        self.announce_chat_request = announce_chat_request
-        self.echo_input_local_tts = echo_input_local_tts
         self._inflight = False
         self._last_text: Optional[str] = None
         self._lock = threading.Lock()
@@ -66,10 +58,7 @@ class ChatAssistant:
     def _run(self, text: str, system_prompt_override: Optional[str]) -> None:
         try:
             if self.echo_input_before_chat:
-                if self.echo_input_local_tts:
-                    self._tts_play_local(text)
-                else:
-                    self._tts_play(text, notify=False)
+                self._tts_play(text, notify=False)
             system_prompt = (system_prompt_override or self.system_prompt).strip() or self.system_prompt
             chat = self.client.chat.completions.create(
                 model=self.model_chat,
@@ -105,13 +94,3 @@ class ChatAssistant:
                 self._on_tts_done()
             except Exception:
                 pass
-    def _tts_play_local(self, text: str) -> None:
-        """Speak text locally via pyttsx3 (no network)."""
-        try:
-            import pyttsx3
-
-            engine = pyttsx3.init()
-            engine.say(text)
-            engine.runAndWait()
-        except Exception as e:
-            print(f"Lokales TTS-Fehler: {e}")
