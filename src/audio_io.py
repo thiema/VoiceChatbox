@@ -286,6 +286,62 @@ def play_wav_bytes(wav_bytes: bytes, device: str | int | None = None, announce: 
         stream.stop()
         stream.close()
 
+def record_audio_chunk(
+    frames_to_record: int,
+    samplerate: int,
+    device_id: int | None = None,
+    channels: int = 1,
+    dtype: str = "int16",
+) -> np.ndarray:
+    """Record audio with fallback sample rate and resample to target if needed."""
+    target_sr = samplerate
+    actual_sr = target_sr
+    try:
+        sd.check_input_settings(
+            device=device_id,
+            samplerate=target_sr,
+            channels=channels,
+            dtype=dtype,
+        )
+    except sd.PortAudioError:
+        dev_info = None
+        try:
+            if device_id is not None:
+                dev_info = sd.query_devices(device_id, "input")
+        except Exception:
+            dev_info = None
+        candidates = []
+        default_sr = int((dev_info or {}).get("default_samplerate") or 48000)
+        for sr in (default_sr, 48000, 44100, 16000):
+            if sr not in candidates:
+                candidates.append(sr)
+        for sr in candidates:
+            try:
+                sd.check_input_settings(
+                    device=device_id,
+                    samplerate=sr,
+                    channels=channels,
+                    dtype=dtype,
+                )
+                actual_sr = sr
+                break
+            except sd.PortAudioError:
+                continue
+    recording = sd.rec(
+        frames_to_record if actual_sr == target_sr else int(actual_sr * (frames_to_record / target_sr)),
+        samplerate=actual_sr,
+        channels=channels,
+        dtype=dtype,
+        device=device_id,
+    )
+    sd.wait()
+    # Convert to mono if needed.
+    if len(recording.shape) > 1:
+        recording = recording[:, 0]
+    if actual_sr != target_sr and recording.size > 0:
+        recording = resample_poly(recording, target_sr, actual_sr).astype(np.int16)
+    return recording
+
 def _tone_wav_bytes(
     frequency: float = 880.0,
     duration_sec: float = 0.08,

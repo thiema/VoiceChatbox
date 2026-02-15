@@ -16,6 +16,7 @@ from .audio_io import (
     play_beep_sequence,
     play_hangup_tone,
     stop_playback,
+    record_audio_chunk,
 )
 from .chat_assistant import ChatAssistant
 from .sentence_detection import (
@@ -334,14 +335,13 @@ class SmartMultiLanguageVoskRecognition:
         """Nimmt einen Audio-Chunk auf."""
         frames_to_record = int(self.samplerate * self.chunk_duration)
         
-        recording = sd.rec(
+        recording = record_audio_chunk(
             frames_to_record,
             samplerate=self.samplerate,
+            device_id=self.device_id,
             channels=1,
             dtype="int16",
-            device=self.device_id
         )
-        sd.wait()
         
         if self.enable_audio_processing:
             recording = self._normalize_audio(recording)

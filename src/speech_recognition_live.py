@@ -18,6 +18,7 @@ from .audio_io import (
     play_beep_sequence,
     play_hangup_tone,
     stop_playback,
+    record_audio_chunk,
 )
 from .oled_display import OledDisplay
 from .sentence_detection import (
@@ -141,14 +142,13 @@ class LiveSpeechRecognition:
         dtype = "int16"
         frames_to_record = int(self.samplerate * self.chunk_duration)
         
-        recording = sd.rec(
+        recording = record_audio_chunk(
             frames_to_record,
             samplerate=self.samplerate,
+            device_id=self.device_id,
             channels=channels,
             dtype=dtype,
-            device=self.device_id
         )
-        sd.wait()
         return recording.reshape(-1)
 
     def _audio_to_wav(self, audio: np.ndarray) -> bytes:

@@ -17,6 +17,7 @@ from .audio_io import (
     play_beep_sequence,
     play_hangup_tone,
     stop_playback,
+    record_audio_chunk,
 )
 from .oled_display import OledDisplay
 from .sentence_detection import (
@@ -340,14 +341,13 @@ class LiveVoskRecognition:
         dtype = "int16"
         frames_to_record = int(self.samplerate * self.chunk_duration)
         
-        recording = sd.rec(
+        recording = record_audio_chunk(
             frames_to_record,
             samplerate=self.samplerate,
+            device_id=self.vosk.device_id,
             channels=channels,
             dtype=dtype,
-            device=self.vosk.device_id
         )
-        sd.wait()
         
         # Konvertiere zu mono (falls stereo)
         if len(recording.shape) > 1:
