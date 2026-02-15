@@ -460,6 +460,8 @@ def run_ptt_live_recognition(use_vosk: bool = False, enable_chatgpt: bool = Fals
             model_tts=settings.model_tts,
             tts_voice=settings.tts_voice,
             audio_output_device=settings.audio_output_device,
+            echo_input_before_chat=settings.echo_input_before_chat,
+            echo_input_local_tts=settings.echo_input_local_tts,
         )
 
     if use_vosk:

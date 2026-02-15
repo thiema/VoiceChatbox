@@ -45,6 +45,8 @@ class Settings:
     debug_logs: bool
     chat_system_prompt_new: str
     chat_system_prompt_context: str
+    echo_input_before_chat: bool
+    echo_input_local_tts: bool
 
 def load_settings() -> Settings:
     key = os.getenv("OPENAI_API_KEY", "").strip()
@@ -62,6 +64,8 @@ def load_settings() -> Settings:
     chat_ignore_after_tts_sec = float(os.getenv("CHAT_IGNORE_AFTER_TTS_SEC", "2.0"))
     auto_pause_after_sec = float(os.getenv("AUTO_PAUSE_AFTER_SEC", "10"))
     debug_logs = _get_bool("DEBUG_LOGS", False)
+    echo_input_before_chat = _get_bool("ECHO_INPUT_BEFORE_CHAT", True)
+    echo_input_local_tts = _get_bool("ECHO_INPUT_LOCAL_TTS", True)
     chat_system_prompt_new = os.getenv(
         "CHAT_SYSTEM_PROMPT_NEW",
         "Du behandelst jede Eingabe als eigenständige, neue Frage. "
@@ -105,4 +109,6 @@ def load_settings() -> Settings:
         debug_logs=debug_logs,
         chat_system_prompt_new=chat_system_prompt_new,
         chat_system_prompt_context=chat_system_prompt_context,
+        echo_input_before_chat=echo_input_before_chat,
+        echo_input_local_tts=echo_input_local_tts,
     )
