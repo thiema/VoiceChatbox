@@ -53,7 +53,7 @@ def load_settings() -> Settings:
     if not key or key == "PASTE_YOUR_KEY_HERE":
         raise RuntimeError("OPENAI_API_KEY fehlt. Bitte in .env setzen.")
 
-    wake_phrases = [p.strip().lower() for p in os.getenv("WAKE_PHRASES", "ok google,okay google,hey google").split(",") if p.strip()]
+    wake_phrases = [p.strip().lower() for p in os.getenv("WAKE_PHRASES", "ok google,okay google,hey google,start").split(",") if p.strip()]
     context_phrases = [p.strip().lower() for p in os.getenv(
         "CONTEXT_PHRASES", "ok google weiter,okay google weiter,hey google weiter"
     ).split(",") if p.strip()]

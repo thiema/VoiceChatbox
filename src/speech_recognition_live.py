@@ -183,12 +183,17 @@ class LiveSpeechRecognition:
     def _check_commands(self, text: str) -> str | None:
         norm = self._normalize_command_text(text)
         padded = f" {norm} "
+        if self.debug_logs and norm:
+            print(f"[DEBUG] cmd: norm='{norm}'")
+            print(f"[DEBUG] cmd: wake={self.wake_phrases} context={self.context_phrases} stop={self.stop_phrases}")
         if any(f" {phrase} " in padded for phrase in self.stop_phrases):
             return "stop"
         if any(f" {phrase} " in padded for phrase in self.context_phrases):
             return "wake_context"
         if any(f" {phrase} " in padded for phrase in self.wake_phrases):
             return "wake"
+        if self.debug_logs and norm:
+            print("[DEBUG] cmd: no match")
         return None
     
     def _process_text(self, text: str) -> None:
