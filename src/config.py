@@ -57,6 +57,7 @@ class Settings:
     reject_phrases: list[str]
     vosk_chunk_duration: float
     vosk_pause_duration: float
+    confirm_timeout_sec: float
 
 def load_settings() -> Settings:
     key = os.getenv("OPENAI_API_KEY", "").strip()
@@ -86,6 +87,7 @@ def load_settings() -> Settings:
     reject_phrases = [p.strip().lower() for p in os.getenv("REJECT_PHRASES", "nein,no,falsch,abbruch").split(",") if p.strip()]
     vosk_chunk_duration = float(os.getenv("VOSK_CHUNK_DURATION", "3.0"))
     vosk_pause_duration = float(os.getenv("VOSK_PAUSE_DURATION", "0.9"))
+    confirm_timeout_sec = float(os.getenv("CONFIRM_TIMEOUT_SEC", "6.0"))
     chat_system_prompt_new = os.getenv(
         "CHAT_SYSTEM_PROMPT_NEW",
         "Du behandelst jede Eingabe als eigenständige, neue Frage. "
@@ -141,4 +143,5 @@ def load_settings() -> Settings:
         reject_phrases=reject_phrases,
         vosk_chunk_duration=vosk_chunk_duration,
         vosk_pause_duration=vosk_pause_duration,
+        confirm_timeout_sec=confirm_timeout_sec,
     )

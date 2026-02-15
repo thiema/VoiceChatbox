@@ -50,7 +50,8 @@ class LiveSpeechRecognition:
                  chat_assistant: Optional[ChatAssistant] = None,
                  confirm_before_chat: bool = False,
                  confirm_phrases: tuple[str, ...] | None = None,
-                 reject_phrases: tuple[str, ...] | None = None):
+                 reject_phrases: tuple[str, ...] | None = None,
+                 confirm_timeout_sec: float = 6.0):
         self.client = client
         self.model_stt = model_stt
         self.device_spec = device
@@ -92,9 +93,11 @@ class LiveSpeechRecognition:
         self.confirm_before_chat = confirm_before_chat
         self.confirm_phrases = confirm_phrases or ("ok", "okay", "ja", "yes")
         self.reject_phrases = reject_phrases or ("nein", "no", "falsch", "abbruch")
+        self.confirm_timeout_sec = confirm_timeout_sec
         self._awaiting_confirm = False
         self._pending_confirm_text: Optional[str] = None
         self._pending_confirm_prompt: Optional[str] = None
+        self._confirm_deadline: Optional[float] = None
         self._ignore_until = 0.0
         self._last_tts_text = ""
         self._pending_prefix = ""
@@ -232,10 +235,27 @@ class LiveSpeechRecognition:
         self._awaiting_confirm = True
         self._pending_confirm_text = text
         self._pending_confirm_prompt = system_prompt_override
+        self._confirm_deadline = time.time() + self.confirm_timeout_sec
         message = f"Ich habe verstanden: {text}. Sag OK oder Nein."
         self._last_tts_text = (message or "").strip().lower()
         self._ignore_until = time.time() + self.chat_ignore_after_tts_sec
         self.chat_assistant.speak(message, notify=False)
+
+    def _cancel_confirmation(self) -> None:
+        if self.chat_assistant:
+            message = "Okay, verworfen."
+            self._last_tts_text = (message or "").strip().lower()
+            self._ignore_until = time.time() + self.chat_ignore_after_tts_sec
+            self.chat_assistant.speak(message, notify=False)
+        self._awaiting_confirm = False
+        self._pending_confirm_text = None
+        self._pending_confirm_prompt = None
+        self._confirm_deadline = None
+        self.current_text = ""
+        self._display_text = ""
+        self._pending_prefix = ""
+        if self.semantic_processor:
+            self.semantic_processor.reset()
 
     def _handle_confirmation(self, text: str) -> bool:
         if not self._awaiting_confirm:
@@ -251,11 +271,12 @@ class LiveSpeechRecognition:
                 system_prompt_override=self._pending_confirm_prompt,
             )
         else:
-            if self.chat_assistant:
-                self.chat_assistant.speak("Okay, verworfen.", notify=False)
+            self._cancel_confirmation()
+            return True
         self._awaiting_confirm = False
         self._pending_confirm_text = None
         self._pending_confirm_prompt = None
+        self._confirm_deadline = None
         self.current_text = ""
         self._display_text = ""
         self._pending_prefix = ""
@@ -297,6 +318,9 @@ class LiveSpeechRecognition:
                     print("ChatGPT-Filter: blockiert (Echo von TTS)")
                 self._debug("ignore: tts echo")
                 return
+        if self._awaiting_confirm and self._confirm_deadline and time.time() > self._confirm_deadline:
+            self._cancel_confirmation()
+            return
         if self._awaiting_confirm:
             if self._handle_confirmation(text):
                 return
@@ -438,6 +462,9 @@ class LiveSpeechRecognition:
         try:
             # Während Ausgabe nichts aufnehmen
             wait_for_playback_end()
+            if self._awaiting_confirm and self._confirm_deadline and time.time() > self._confirm_deadline:
+                self._cancel_confirmation()
+                return
             self._debug("record_chunk: start")
             audio = self._record_chunk()
             self._debug(f"record_chunk: done len={len(audio)}")
@@ -637,6 +664,7 @@ def run_live_recognition(enable_chatgpt: bool = False):
         confirm_before_chat=settings.confirm_before_chat,
         confirm_phrases=tuple(settings.confirm_phrases),
         reject_phrases=tuple(settings.reject_phrases),
+        confirm_timeout_sec=settings.confirm_timeout_sec,
     )
 
     if chat_assistant and hasattr(chat_assistant, "set_on_tts_done"):
