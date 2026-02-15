@@ -186,7 +186,10 @@ class LiveSpeechRecognition:
         if not message:
             return
         try:
-            self.chat_assistant.speak(message)
+            # Avoid feedback loop: mark as "just spoken" and ignore briefly.
+            self._last_tts_text = (message or "").strip().lower()
+            self._ignore_until = time.time() + self.chat_ignore_after_tts_sec
+            self.chat_assistant.speak(message, notify=False)
         except Exception as e:
             if self.chat_filter_debug:
                 print(f"ChatGPT-Filter: Audio-Fehler ({e})")
