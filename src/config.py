@@ -51,6 +51,7 @@ class Settings:
     vad_rms_threshold: float
     vad_noise_multiplier: float
     vad_noise_alpha: float
+    vad_hangover_factor: float
     announce_chat_request: bool
     confirm_before_chat: bool
     confirm_phrases: list[str]
@@ -81,6 +82,7 @@ def load_settings() -> Settings:
     vad_rms_threshold = float(os.getenv("VAD_RMS_THRESHOLD", "0.01"))
     vad_noise_multiplier = float(os.getenv("VAD_NOISE_MULTIPLIER", "3.0"))
     vad_noise_alpha = float(os.getenv("VAD_NOISE_ALPHA", "0.1"))
+    vad_hangover_factor = float(os.getenv("VAD_HANGOVER_FACTOR", "0.6"))
     announce_chat_request = _get_bool("ANNOUNCE_CHAT_REQUEST", True)
     confirm_before_chat = _get_bool("CONFIRM_BEFORE_CHAT", False)
     confirm_phrases = [p.strip().lower() for p in os.getenv("CONFIRM_PHRASES", "ok,okay,ja,yes").split(",") if p.strip()]
@@ -137,6 +139,7 @@ def load_settings() -> Settings:
         vad_rms_threshold=vad_rms_threshold,
         vad_noise_multiplier=vad_noise_multiplier,
         vad_noise_alpha=vad_noise_alpha,
+        vad_hangover_factor=vad_hangover_factor,
         announce_chat_request=announce_chat_request,
         confirm_before_chat=confirm_before_chat,
         confirm_phrases=confirm_phrases,

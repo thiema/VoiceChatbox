@@ -1,4 +1,4 @@
-# Vosk Sprachmodell Setup (Deutsch, lokal)
+l# Vosk Sprachmodell Setup (Deutsch, lokal)
 
 Diese Anleitung erklärt, wie du das lokale Vosk-Sprachmodell für die Spracherkennung einrichtest.
 

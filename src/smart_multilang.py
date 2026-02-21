@@ -39,6 +39,10 @@ class SmartMultiLanguageVoskRecognition:
                  device: Optional[str | int] = None,
                  chunk_duration: float = 3.0, enable_audio_processing: bool = True,
                  enable_semantic: bool = True,
+                 vad_rms_threshold: float = 0.01,
+                 vad_noise_multiplier: float = 3.0,
+                 vad_noise_alpha: float = 0.1,
+                 vad_hangover_factor: float = 0.6,
                  wake_phrases: tuple[str, ...] | None = None,
                  context_phrases: tuple[str, ...] | None = None,
                  stop_phrases: tuple[str, ...] | None = None,
@@ -76,6 +80,11 @@ class SmartMultiLanguageVoskRecognition:
         self.chunk_duration = chunk_duration
         self.enable_audio_processing = enable_audio_processing
         self.enable_semantic = enable_semantic
+        self.vad_rms_threshold = vad_rms_threshold
+        self.vad_noise_multiplier = vad_noise_multiplier
+        self.vad_noise_alpha = vad_noise_alpha
+        self.vad_hangover_factor = max(0.1, min(vad_hangover_factor, 1.0))
+        self._noise_floor = 0.0
         self.chat_assistant = chat_assistant
         self._last_chat_text: Optional[str] = None
         self.listening_active = False
@@ -272,7 +281,22 @@ class SmartMultiLanguageVoskRecognition:
         """Einfache Voice Activity Detection (VAD)."""
         audio_float = audio.astype(np.float32) / 32768.0
         rms = np.sqrt(np.mean(audio_float ** 2))
-        return rms > threshold
+        base_threshold = self.vad_rms_threshold if self.vad_rms_threshold > 0 else threshold
+        if self.vad_noise_alpha > 0 and rms < base_threshold:
+            if self._noise_floor <= 0:
+                self._noise_floor = rms
+            else:
+                self._noise_floor = (1.0 - self.vad_noise_alpha) * self._noise_floor + self.vad_noise_alpha * rms
+        effective_threshold = max(base_threshold, self._noise_floor * self.vad_noise_multiplier)
+        if self._speech_active:
+            effective_threshold *= self.vad_hangover_factor
+        if self.debug_logs:
+            self._debug(
+                f"vad: rms={rms:.6f} base={base_threshold:.6f} "
+                f"noise={self._noise_floor:.6f} mult={self.vad_noise_multiplier:.2f} "
+                f"hangover={self.vad_hangover_factor:.2f} th={effective_threshold:.6f}"
+            )
+        return rms > effective_threshold
     
     def _merge_texts(self, text_de: str, text_en: str) -> str:
         """
@@ -854,6 +878,10 @@ def run_smart_multilang_recognition(
         model_path_en=model_path_en,
         device=device,
         chunk_duration=settings.vosk_chunk_duration,
+        vad_rms_threshold=settings.vad_rms_threshold,
+        vad_noise_multiplier=settings.vad_noise_multiplier,
+        vad_noise_alpha=settings.vad_noise_alpha,
+        vad_hangover_factor=settings.vad_hangover_factor,
         wake_phrases=tuple(settings.wake_phrases),
         context_phrases=tuple(settings.context_phrases),
         stop_phrases=tuple(settings.stop_phrases),

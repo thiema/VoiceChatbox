@@ -216,7 +216,8 @@ class LiveVoskRecognition:
                  confirm_timeout_sec: float = 6.0,
                  vad_rms_threshold: float = 0.01,
                  vad_noise_multiplier: float = 3.0,
-                 vad_noise_alpha: float = 0.1):
+                 vad_noise_alpha: float = 0.1,
+                 vad_hangover_factor: float = 0.6):
         """
         Initialisiere Live-Vosk-Spracherkennung.
         
@@ -276,6 +277,7 @@ class LiveVoskRecognition:
         self.vad_rms_threshold = vad_rms_threshold
         self.vad_noise_multiplier = vad_noise_multiplier
         self.vad_noise_alpha = vad_noise_alpha
+        self.vad_hangover_factor = max(0.1, min(vad_hangover_factor, 1.0))
         self._noise_floor = 0.0
     
     def set_text_callback(self, callback: Callable[[str], None]) -> None:
@@ -327,11 +329,13 @@ class LiveVoskRecognition:
             else:
                 self._noise_floor = (1.0 - self.vad_noise_alpha) * self._noise_floor + self.vad_noise_alpha * rms
         effective_threshold = max(base_threshold, self._noise_floor * self.vad_noise_multiplier)
+        if self._speech_active:
+            effective_threshold *= self.vad_hangover_factor
         if self.debug_logs:
             self._debug(
                 f"vad: rms={rms:.6f} base={base_threshold:.6f} "
                 f"noise={self._noise_floor:.6f} mult={self.vad_noise_multiplier:.2f} "
-                f"th={effective_threshold:.6f}"
+                f"hangover={self.vad_hangover_factor:.2f} th={effective_threshold:.6f}"
             )
         return rms > effective_threshold
     
@@ -926,6 +930,7 @@ def run_live_vosk_recognition(model_path: Optional[str] = None, enable_chatgpt: 
         vad_rms_threshold=settings.vad_rms_threshold,
         vad_noise_multiplier=settings.vad_noise_multiplier,
         vad_noise_alpha=settings.vad_noise_alpha,
+        vad_hangover_factor=settings.vad_hangover_factor,
     )
 
     if chat_assistant and hasattr(chat_assistant, "set_on_tts_done"):
