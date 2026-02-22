@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 import threading
-import base64
 import json
 import os
+import base64
+import time
+import shutil
+import subprocess
 from collections import deque
 from typing import Optional, Callable, Deque, Tuple, List, Dict
 
@@ -26,6 +29,7 @@ class ChatAssistant:
         system_prompt: str = "Du bist ein hilfreicher, knapper Sprachassistent.",
         echo_input_before_chat: bool = True,
         history_path: str | None = None,
+        history_dir: str | None = None,
         history_max: int = 50,
     ) -> None:
         self.client = client
@@ -40,8 +44,11 @@ class ChatAssistant:
         self._inflight = False
         self._last_text: Optional[str] = None
         self._lock = threading.Lock()
-        self._history_path = history_path or "data/tts_history.json"
-        self._history: Deque[Tuple[str, bytes]] = deque(maxlen=max(1, history_max))
+        self._history_path = history_path or "data/tts_history/index.json"
+        self._history_dir = history_dir or os.path.dirname(self._history_path) or "data/tts_history"
+        self._history_max = max(1, history_max)
+        self._history: Deque[Tuple[str, bytes, str]] = deque()
+        self._history_seq = 0
         self._load_history()
 
     def set_on_tts_done(self, callback: Optional[Callable[[], None]]) -> None:
@@ -108,7 +115,7 @@ class ChatAssistant:
                 return
             print(f"ChatGPT: {answer}")
             wav_bytes = self._tts_synthesize(answer)
-            self._history.append((answer, wav_bytes))
+            self._append_history(answer, wav_bytes)
             self._save_history()
             self._play_wav_bytes(wav_bytes)
         except Exception as e:
@@ -148,7 +155,7 @@ class ChatAssistant:
             return False
         if index > len(self._history):
             return False
-        answer, wav_bytes = list(self._history)[-index]
+        answer, wav_bytes, _ = list(self._history)[-index]
         print(f"Historie {index}: {answer}")
         self._play_wav_bytes(wav_bytes)
         return True
@@ -161,31 +168,140 @@ class ChatAssistant:
                 data = json.load(f)
             if not isinstance(data, list):
                 return
-            for item in data[-self._history.maxlen:]:
+            for item in data[-self._history_max:]:
                 if not isinstance(item, dict):
                     continue
                 text = (item.get("text") or "").strip()
-                wav_b64 = item.get("wav_b64") or ""
-                if not text or not wav_b64:
+                ogg_rel = (item.get("ogg_path") or "").strip()
+                if not text or not ogg_rel:
+                    # Backward-compat: older JSON with base64 WAV
+                    wav_b64 = (item.get("wav_b64") or "").strip()
+                    if not text or not wav_b64:
+                        continue
+                    try:
+                        wav_bytes = base64.b64decode(wav_b64.encode("ascii"))
+                    except Exception:
+                        continue
+                    ogg_rel = self._write_ogg(wav_bytes)
+                    if not ogg_rel:
+                        continue
+                    self._history.append((text, wav_bytes, ogg_rel))
                     continue
-                try:
-                    wav_bytes = base64.b64decode(wav_b64.encode("ascii"))
-                except Exception:
+                ogg_path = os.path.join(self._history_dir, ogg_rel)
+                wav_bytes = self._decode_ogg_to_wav(ogg_path)
+                if not wav_bytes:
                     continue
-                self._history.append((text, wav_bytes))
+                self._history.append((text, wav_bytes, ogg_rel))
         except Exception as e:
             print(f"Historie laden fehlgeschlagen: {e}")
 
     def _save_history(self) -> None:
         try:
             os.makedirs(os.path.dirname(self._history_path) or ".", exist_ok=True)
+            os.makedirs(self._history_dir, exist_ok=True)
             data: List[Dict[str, str]] = []
-            for text, wav_bytes in list(self._history):
+            for text, wav_bytes, ogg_rel in list(self._history):
                 data.append({
                     "text": text,
-                    "wav_b64": base64.b64encode(wav_bytes).decode("ascii"),
+                    "ogg_path": ogg_rel,
                 })
             with open(self._history_path, "w", encoding="utf-8") as f:
                 json.dump(data, f, ensure_ascii=False)
+            self._prune_history_files()
         except Exception as e:
             print(f"Historie speichern fehlgeschlagen: {e}")
+
+    def _append_history(self, text: str, wav_bytes: bytes) -> None:
+        ogg_rel = self._write_ogg(wav_bytes)
+        if not ogg_rel:
+            return
+        if len(self._history) >= self._history_max:
+            old = self._history.popleft()
+            self._remove_history_file(old[2])
+        self._history.append((text, wav_bytes, ogg_rel))
+
+    def _write_ogg(self, wav_bytes: bytes) -> str:
+        if not self._ffmpeg_available():
+            print("Historie: ffmpeg fehlt, OGG kann nicht gespeichert werden.")
+            return ""
+        os.makedirs(self._history_dir, exist_ok=True)
+        self._history_seq += 1
+        filename = f"tts_{int(time.time())}_{self._history_seq}.ogg"
+        ogg_path = os.path.join(self._history_dir, filename)
+        try:
+            proc = subprocess.run(
+                [
+                    "ffmpeg",
+                    "-hide_banner",
+                    "-loglevel",
+                    "error",
+                    "-y",
+                    "-f",
+                    "wav",
+                    "-i",
+                    "pipe:0",
+                    "-c:a",
+                    "libopus",
+                    ogg_path,
+                ],
+                input=wav_bytes,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                check=True,
+            )
+        except Exception as e:
+            print(f"Historie: OGG speichern fehlgeschlagen ({e})")
+            return ""
+        return filename
+
+    def _decode_ogg_to_wav(self, ogg_path: str) -> bytes:
+        if not self._ffmpeg_available():
+            print("Historie: ffmpeg fehlt, OGG kann nicht geladen werden.")
+            return b""
+        try:
+            proc = subprocess.run(
+                [
+                    "ffmpeg",
+                    "-hide_banner",
+                    "-loglevel",
+                    "error",
+                    "-i",
+                    ogg_path,
+                    "-f",
+                    "wav",
+                    "pipe:1",
+                ],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                check=True,
+            )
+            return proc.stdout
+        except Exception as e:
+            print(f"Historie: OGG laden fehlgeschlagen ({e})")
+            return b""
+
+    def _prune_history_files(self) -> None:
+        try:
+            keep = {entry[2] for entry in self._history if entry[2]}
+            for name in os.listdir(self._history_dir):
+                if not name.endswith(".ogg"):
+                    continue
+                if name.startswith("tts_") and name not in keep:
+                    try:
+                        os.remove(os.path.join(self._history_dir, name))
+                    except OSError:
+                        pass
+        except Exception:
+            pass
+
+    def _remove_history_file(self, ogg_rel: str) -> None:
+        if not ogg_rel:
+            return
+        try:
+            os.remove(os.path.join(self._history_dir, ogg_rel))
+        except OSError:
+            pass
+
+    @staticmethod
+    def _ffmpeg_available() -> bool:
+        return shutil.which("ffmpeg") is not None
