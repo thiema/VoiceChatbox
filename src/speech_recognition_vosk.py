@@ -458,6 +458,27 @@ class LiveVoskRecognition:
         text = re.sub(r"[^a-z0-9äöüß ]+", " ", text)
         return re.sub(r"\s+", " ", text).strip()
 
+    def _history_index(self, text: str) -> int | None:
+        norm = self._normalize_command_text(text)
+        match = re.search(r"\bhistorie\s+(\d+)\b", norm)
+        if not match:
+            return None
+        try:
+            return int(match.group(1))
+        except ValueError:
+            return None
+
+    def _handle_history_command(self, text: str) -> bool:
+        if not self.chat_assistant:
+            return False
+        index = self._history_index(text)
+        if index is None:
+            return False
+        if not self.chat_assistant.play_history(index):
+            if self.debug_logs:
+                print(f"[DEBUG] historie: index {index} not available")
+        return True
+
     def _check_confirmation(self, text: str) -> str | None:
         norm = self._normalize_command_text(text)
         padded = f" {norm} "
@@ -656,6 +677,8 @@ class LiveVoskRecognition:
                     if self._handle_confirmation(text):
                         return
 
+                if self._handle_history_command(text):
+                    return
                 cmd = self._check_commands(text)
                 if cmd == "stop":
                     stop_playback()

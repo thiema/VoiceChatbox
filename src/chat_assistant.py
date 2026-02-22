@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import threading
-from typing import Optional, Callable
+from collections import deque
+from typing import Optional, Callable, Deque, Tuple
 
 from openai import OpenAI
 
@@ -34,6 +35,7 @@ class ChatAssistant:
         self._inflight = False
         self._last_text: Optional[str] = None
         self._lock = threading.Lock()
+        self._history: Deque[Tuple[str, bytes]] = deque(maxlen=50)
 
     def set_on_tts_done(self, callback: Optional[Callable[[], None]]) -> None:
         self._on_tts_done = callback
@@ -98,7 +100,9 @@ class ChatAssistant:
             if not answer:
                 return
             print(f"ChatGPT: {answer}")
-            self._tts_play(answer)
+            wav_bytes = self._tts_synthesize(answer)
+            self._history.append((answer, wav_bytes))
+            self._play_wav_bytes(wav_bytes)
         except Exception as e:
             print(f"ChatGPT-Fehler: {e}")
         finally:
@@ -106,13 +110,19 @@ class ChatAssistant:
                 self._inflight = False
 
     def _tts_play(self, text: str, notify: bool = True) -> None:
+        wav_bytes = self._tts_synthesize(text)
+        self._play_wav_bytes(wav_bytes, notify=notify)
+
+    def _tts_synthesize(self, text: str) -> bytes:
         speech = self.client.audio.speech.create(
             model=self.model_tts,
             voice=self.tts_voice,
             input=text,
             response_format="wav",
         )
-        wav_bytes = speech.read()
+        return speech.read()
+
+    def _play_wav_bytes(self, wav_bytes: bytes, notify: bool = True) -> None:
         announce = self._announce_output
         self._announce_output = False
         play_wav_bytes(wav_bytes, device=self.audio_output_device, announce=announce)
@@ -121,3 +131,16 @@ class ChatAssistant:
                 self._on_tts_done()
             except Exception:
                 pass
+
+    def play_history(self, index: int) -> bool:
+        """Play a previous answer by 1-based index (1 = most recent)."""
+        if index <= 0:
+            return False
+        if not self._history:
+            return False
+        if index > len(self._history):
+            return False
+        answer, wav_bytes = list(self._history)[-index]
+        print(f"Historie {index}: {answer}")
+        self._play_wav_bytes(wav_bytes)
+        return True

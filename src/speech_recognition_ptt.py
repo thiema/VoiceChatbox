@@ -86,6 +86,26 @@ class PTTLiveRecognition:
         text = re.sub(r"[^a-z0-9äöüß ]+", " ", text)
         return re.sub(r"\s+", " ", text).strip()
 
+    def _history_index(self, text: str) -> int | None:
+        norm = self._normalize_text(text)
+        match = re.search(r"\bhistorie\s+(\d+)\b", norm)
+        if not match:
+            return None
+        try:
+            return int(match.group(1))
+        except ValueError:
+            return None
+
+    def _handle_history_command(self, text: str) -> bool:
+        if not self.chat_assistant:
+            return False
+        index = self._history_index(text)
+        if index is None:
+            return False
+        if not self.chat_assistant.play_history(index):
+            print(f"Historie {index} nicht verfügbar.")
+        return True
+
     def _check_confirmation(self, text: str) -> str | None:
         norm = self._normalize_text(text)
         padded = f" {norm} "
@@ -182,6 +202,12 @@ class PTTLiveRecognition:
                 text = self._transcribe_audio(wav_bytes)
                 
                 if text:
+                    if self._handle_history_command(text):
+                        if self.leds:
+                            self.leds.set(Status.IDLE)
+                        if self.oled:
+                            self.oled.show_ready()
+                        continue
                     prev_text = self.current_text
                     # Semantische Satzerkennung mit kontext-basierter Korrektur
                     if hasattr(self, 'semantic_processor') and self.semantic_processor:
