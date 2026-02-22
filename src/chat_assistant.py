@@ -47,7 +47,7 @@ class ChatAssistant:
         self._history_path = history_path or "data/tts_history/index.json"
         self._history_dir = history_dir or os.path.dirname(self._history_path) or "data/tts_history"
         self._history_max = max(1, history_max)
-        self._history: Deque[Tuple[str, bytes, str]] = deque()
+        self._history: Deque[Tuple[str, str, bytes, str]] = deque()
         self._history_seq = 0
         self._load_history()
 
@@ -116,7 +116,7 @@ class ChatAssistant:
                 return
             print(f"ChatGPT: {answer}")
             wav_bytes = self._tts_synthesize(answer)
-            self._append_history(answer, wav_bytes)
+            self._append_history(text, answer, wav_bytes)
             self._save_history()
             self._play_wav_bytes(wav_bytes)
         except Exception as e:
@@ -156,8 +156,10 @@ class ChatAssistant:
             return False
         if index > len(self._history):
             return False
-        answer, wav_bytes, _ = list(self._history)[-index]
-        print(f"Historie {index}: {answer}")
+        question, answer, wav_bytes, _ = list(self._history)[-index]
+        if question:
+            print(f"Historie {index} (Frage): {question}")
+        print(f"Historie {index} (Antwort): {answer}")
         self._play_wav_bytes(wav_bytes)
         return True
 
@@ -175,6 +177,7 @@ class ChatAssistant:
                 if not isinstance(item, dict):
                     continue
                 text = (item.get("text") or "").strip()
+                question = (item.get("question") or "").strip()
                 ogg_rel = (item.get("ogg_path") or "").strip()
                 if not text or not ogg_rel:
                     # Backward-compat: older JSON with base64 WAV
@@ -188,13 +191,13 @@ class ChatAssistant:
                     ogg_rel = self._write_ogg(wav_bytes)
                     if not ogg_rel:
                         continue
-                    self._history.append((text, wav_bytes, ogg_rel))
+                    self._history.append((question, text, wav_bytes, ogg_rel))
                     continue
                 ogg_path = os.path.join(self._history_dir, ogg_rel)
                 wav_bytes = self._decode_ogg_to_wav(ogg_path)
                 if not wav_bytes:
                     continue
-                self._history.append((text, wav_bytes, ogg_rel))
+                self._history.append((question, text, wav_bytes, ogg_rel))
             print(f"Historie: {len(self._history)} Aufnahme(n) vorhanden.")
         except Exception as e:
             print(f"Historie laden fehlgeschlagen: {e}")
@@ -204,8 +207,9 @@ class ChatAssistant:
             os.makedirs(os.path.dirname(self._history_path) or ".", exist_ok=True)
             os.makedirs(self._history_dir, exist_ok=True)
             data: List[Dict[str, str]] = []
-            for text, wav_bytes, ogg_rel in list(self._history):
+            for question, text, wav_bytes, ogg_rel in list(self._history):
                 data.append({
+                    "question": question,
                     "text": text,
                     "ogg_path": ogg_rel,
                 })
@@ -215,14 +219,14 @@ class ChatAssistant:
         except Exception as e:
             print(f"Historie speichern fehlgeschlagen: {e}")
 
-    def _append_history(self, text: str, wav_bytes: bytes) -> None:
+    def _append_history(self, question: str, text: str, wav_bytes: bytes) -> None:
         ogg_rel = self._write_ogg(wav_bytes)
         if not ogg_rel:
             return
         if len(self._history) >= self._history_max:
             old = self._history.popleft()
-            self._remove_history_file(old[2])
-        self._history.append((text, wav_bytes, ogg_rel))
+            self._remove_history_file(old[3])
+        self._history.append((question, text, wav_bytes, ogg_rel))
 
     def _write_ogg(self, wav_bytes: bytes) -> str:
         if not self._ffmpeg_available():
@@ -286,7 +290,7 @@ class ChatAssistant:
 
     def _prune_history_files(self) -> None:
         try:
-            keep = {entry[2] for entry in self._history if entry[2]}
+            keep = {entry[3] for entry in self._history if entry[3]}
             for name in os.listdir(self._history_dir):
                 if not name.endswith(".ogg"):
                     continue
