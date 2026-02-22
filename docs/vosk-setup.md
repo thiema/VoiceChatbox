@@ -1,4 +1,4 @@
-l# Vosk Sprachmodell Setup (Deutsch, lokal)
+# Vosk Sprachmodell Setup (Deutsch, lokal)
 
 Diese Anleitung erklärt, wie du das lokale Vosk-Sprachmodell für die Spracherkennung einrichtest.
 
@@ -115,6 +115,43 @@ CHAT_IGNORE_AFTER_TTS_SEC=2.0
 
 # Nach Inaktivität automatisch in Pause
 AUTO_PAUSE_AFTER_SEC=10
+```
+
+### VAD-Parameter (Sprachbeginn/-mitte/-ende verbessern)
+
+Die VAD-Parameter steuern, wann Audio als Sprache erkannt wird. Damit lassen
+sich fehlende Wörter am Anfang, in der Mitte oder am Ende reduzieren.
+
+```bash
+# Grundempfindlichkeit (RMS). Niedriger = empfindlicher.
+VAD_RMS_THRESHOLD=0.01
+
+# Dynamische Schwelle relativ zur Geräuschkulisse.
+VAD_NOISE_MULTIPLIER=3.0
+
+# Wie schnell sich der Noise-Floor anpasst (0..1).
+VAD_NOISE_ALPHA=0.1
+
+# "Nachlauf": macht VAD am Satzende toleranter.
+VAD_HANGOVER_FACTOR=0.6
+
+# Vorlauf-Puffer in Sekunden, um Satzanfänge nicht zu verlieren.
+VAD_PREROLL_SEC=0.2
+```
+
+**Tuning-Tipps:**
+- Fehlende Satzanfänge → `VAD_PREROLL_SEC` erhöhen (0.25–0.3).
+- Fehlende Wörter in der Mitte → `VAD_RMS_THRESHOLD` leicht senken (0.008).
+- Zu frühes Satzende → `VAD_HANGOVER_FACTOR` senken (0.5–0.6).
+
+### Vosk-Chunk/Pause
+
+```bash
+# Länge pro Aufnahme-Chunk (Sekunden)
+VOSK_CHUNK_DURATION=3.0
+
+# Stille-Dauer bis Satzabschluss (Sekunden)
+VOSK_PAUSE_DURATION=0.9
 ```
 
 **Hinweis:** Der Pfad ist relativ zum Projektverzeichnis oder absolut.
