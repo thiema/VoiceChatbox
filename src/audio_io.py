@@ -6,11 +6,15 @@ import time
 import threading
 import wave
 import re
+import subprocess
+import shutil
 import numpy as np
 import sounddevice as sd
 from scipy.signal import resample_poly
 
 _playback_active = threading.Event()
+_volume_lock = threading.Lock()
+_idle_muted = False
 
 def is_playback_active() -> bool:
     return _playback_active.is_set()
@@ -27,6 +31,50 @@ def stop_playback() -> None:
     except Exception:
         pass
     _playback_active.clear()
+    _mute_output_when_idle(True)
+
+def _mute_output_when_idle(enabled: bool) -> None:
+    """Mute/unmute system output when idle to avoid noise."""
+    if os.getenv("MUTE_OUTPUT_WHEN_IDLE", "false").strip().lower() not in ("1", "true", "yes", "y", "on"):
+        return
+    if not _amixer_available():
+        return
+    global _idle_muted
+    with _volume_lock:
+        if enabled:
+            if _idle_muted:
+                return
+            if _set_system_volume_percent(0):
+                _idle_muted = True
+        else:
+            if not _idle_muted:
+                return
+            target = _get_output_volume_percent()
+            if _set_system_volume_percent(target):
+                _idle_muted = False
+
+def _get_output_volume_percent() -> int:
+    try:
+        return int(float(os.getenv("OUTPUT_VOLUME_PERCENT", "60")))
+    except ValueError:
+        return 60
+
+def _amixer_available() -> bool:
+    return shutil.which("amixer") is not None
+
+def _set_system_volume_percent(percent: int) -> bool:
+    control = os.getenv("OUTPUT_VOLUME_CONTROL", "Master").strip() or "Master"
+    percent = max(0, min(int(percent), 100))
+    try:
+        subprocess.run(
+            ["amixer", "set", control, f"{percent}%"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            check=True,
+        )
+        return True
+    except Exception:
+        return False
 
 def _get_input_devices() -> list[tuple[int, dict]]:
     """Return list of (device_id, device_info) for input-capable devices."""
@@ -209,6 +257,7 @@ def play_wav_bytes(wav_bytes: bytes, device: str | int | None = None, announce: 
     """Play WAV audio bytes via the selected output device."""
     if not wav_bytes:
         return
+    _mute_output_when_idle(False)
     device_id = select_output_device(device, announce=announce)
     with wave.open(io.BytesIO(wav_bytes), "rb") as wf:
         channels = wf.getnchannels()
@@ -285,6 +334,7 @@ def play_wav_bytes(wav_bytes: bytes, device: str | int | None = None, announce: 
         _playback_active.clear()
         stream.stop()
         stream.close()
+        _mute_output_when_idle(True)
 
 def record_audio_chunk(
     frames_to_record: int,

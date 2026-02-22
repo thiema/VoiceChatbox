@@ -154,6 +154,26 @@ VOSK_CHUNK_DURATION=3.0
 VOSK_PAUSE_DURATION=0.9
 ```
 
+### Status: BEREIT nach Antwort halten
+
+```bash
+# Nach Antwort/Verwerfen für X Sekunden im Modus BEREIT bleiben
+READY_HOLD_SEC=10.0
+```
+
+### Audio: Lautsprecher im Idle stummschalten
+
+```bash
+# Wenn keine Ausgabe läuft, System-Lautstärke auf 0 setzen
+MUTE_OUTPUT_WHEN_IDLE=true
+
+# Standard-Lautstärke bei Ausgabe (in Prozent)
+OUTPUT_VOLUME_PERCENT=60
+
+# Mixer-Control (Linux amixer), z.B. "Master" oder "PCM"
+OUTPUT_VOLUME_CONTROL=Master
+```
+
 **Hinweis:** Der Pfad ist relativ zum Projektverzeichnis oder absolut.
 
 ---
