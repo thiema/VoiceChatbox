@@ -330,6 +330,19 @@ def play_wav_bytes(wav_bytes: bytes, device: str | int | None = None, announce: 
     if audio.size == 0:
         return
 
+    # Optional tail padding to avoid truncating the last syllable.
+    try:
+        tail_ms = float(os.getenv("OUTPUT_TAIL_PAD_MS", "50"))
+    except ValueError:
+        tail_ms = 50.0
+    if tail_ms > 0 and target_sr > 0:
+        pad_frames = int(target_sr * (tail_ms / 1000.0))
+        if pad_frames > 0:
+            if audio.ndim == 1:
+                audio = np.concatenate([audio, np.zeros(pad_frames, dtype=np.int16)])
+            else:
+                audio = np.concatenate([audio, np.zeros((pad_frames, audio.shape[1]), dtype=np.int16)], axis=0)
+
     # Use a dedicated OutputStream to avoid PortAudio crashes on stop/play.
     stream = sd.OutputStream(
         device=device_id,
