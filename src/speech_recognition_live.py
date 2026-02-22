@@ -389,9 +389,9 @@ class LiveSpeechRecognition:
 
         text = re.sub(r'\s+', ' ', text).strip()
 
-                if self._handle_history_command(text):
-                    return
-                cmd = self._check_commands(text)
+        if self._handle_history_command(text):
+            return
+        cmd = self._check_commands(text)
         if cmd == "stop":
             stop_playback()
             self._set_listening(False, "STOPP erkannt", context_mode=False)
