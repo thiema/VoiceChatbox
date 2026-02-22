@@ -63,6 +63,7 @@ class Settings:
     history_path: str
     history_dir: str
     history_max: int
+    ready_hold_sec: float
 
 def load_settings() -> Settings:
     key = os.getenv("OPENAI_API_KEY", "").strip()
@@ -98,6 +99,7 @@ def load_settings() -> Settings:
     history_path = os.getenv("HISTORY_PATH", "data/tts_history/index.json")
     history_dir = os.getenv("HISTORY_DIR", "data/tts_history")
     history_max = int(os.getenv("HISTORY_MAX", "50"))
+    ready_hold_sec = float(os.getenv("READY_HOLD_SEC", "10.0"))
     chat_system_prompt_new = os.getenv(
         "CHAT_SYSTEM_PROMPT_NEW",
         "Du behandelst jede Eingabe als eigenständige, neue Frage. "
@@ -159,4 +161,5 @@ def load_settings() -> Settings:
         history_path=history_path,
         history_dir=history_dir,
         history_max=history_max,
+        ready_hold_sec=ready_hold_sec,
     )

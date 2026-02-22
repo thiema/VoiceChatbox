@@ -52,7 +52,8 @@ class LiveSpeechRecognition:
                  confirm_before_chat: bool = False,
                  confirm_phrases: tuple[str, ...] | None = None,
                  reject_phrases: tuple[str, ...] | None = None,
-                 confirm_timeout_sec: float = 6.0):
+                 confirm_timeout_sec: float = 6.0,
+                 ready_hold_sec: float = 10.0):
         self.client = client
         self.model_stt = model_stt
         self.device_spec = device
@@ -103,6 +104,8 @@ class LiveSpeechRecognition:
         self._last_tts_text = ""
         self._pending_prefix = ""
         self._last_activity_ts = time.time()
+        self._force_ready_until = 0.0
+        self.ready_hold_sec = ready_hold_sec
         self.context_mode = False
         self.prompt_new = prompt_new
         self.prompt_context = prompt_context
@@ -166,7 +169,13 @@ class LiveSpeechRecognition:
         if self.oled and self.oled.device:
             self.oled.show_text_scroll(text)
 
-    def _set_listening(self, active: bool, reason: str, context_mode: bool | None = None) -> None:
+    def _set_listening(
+        self,
+        active: bool,
+        reason: str,
+        context_mode: bool | None = None,
+        announce: bool = True,
+    ) -> None:
         if context_mode is not None:
             self.context_mode = context_mode
         status_text = "BEREIT MIT Kontext" if active and self.context_mode else "BEREIT" if active else "PAUSE"
@@ -181,9 +190,11 @@ class LiveSpeechRecognition:
         print(f"STATUS: {status_text} ({reason})")
         if active:
             self._last_activity_ts = time.time()
-            play_beep_sequence(device=self.audio_output_device, announce=False)
+            if announce:
+                play_beep_sequence(device=self.audio_output_device, announce=False)
         elif prev_active and not active:
             self.context_mode = False
+            self._force_ready_until = 0.0
             play_hangup_tone(device=self.audio_output_device, announce=False)
 
     def _debug(self, msg: str) -> None:
@@ -197,7 +208,9 @@ class LiveSpeechRecognition:
     def _on_tts_done(self, text: str) -> None:
         self._last_tts_text = (text or "").strip().lower()
         self._ignore_until = time.time() + self.chat_ignore_after_tts_sec
-        self._set_listening(False, "TTS fertig", context_mode=False)
+        self._last_activity_ts = time.time()
+        self._force_ready_until = time.time() + self.ready_hold_sec
+        self._set_listening(True, "Antwort fertig", context_mode=False, announce=False)
 
     def _announce_chat_filter_block(self, reason: str | None) -> None:
         if not self.chat_assistant:
@@ -291,6 +304,9 @@ class LiveSpeechRecognition:
         self._pending_prefix = ""
         if self.semantic_processor:
             self.semantic_processor.reset()
+        self._last_activity_ts = time.time()
+        self._force_ready_until = time.time() + self.ready_hold_sec
+        self._set_listening(True, "Frage verworfen", context_mode=False, announce=False)
 
     def _handle_confirmation(self, text: str) -> bool:
         if not self._awaiting_confirm:
@@ -614,7 +630,9 @@ class LiveSpeechRecognition:
             # Kontinuierliche Verarbeitung
             while self.is_running:
                 if self.listening_active and self.auto_pause_after_sec > 0:
-                    if (time.time() - self._last_activity_ts) >= self.auto_pause_after_sec:
+                    if self._force_ready_until and time.time() < self._force_ready_until:
+                        pass
+                    elif (time.time() - self._last_activity_ts) >= self.auto_pause_after_sec:
                         self._set_listening(False, "Inaktivität")
                 self._process_chunk()
         except KeyboardInterrupt:
@@ -712,6 +730,7 @@ def run_live_recognition(enable_chatgpt: bool = False):
         confirm_phrases=tuple(settings.confirm_phrases),
         reject_phrases=tuple(settings.reject_phrases),
         confirm_timeout_sec=settings.confirm_timeout_sec,
+        ready_hold_sec=settings.ready_hold_sec,
     )
 
     if chat_assistant and hasattr(chat_assistant, "set_on_tts_done"):

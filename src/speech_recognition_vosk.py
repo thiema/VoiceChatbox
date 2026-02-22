@@ -218,7 +218,8 @@ class LiveVoskRecognition:
                  vad_noise_multiplier: float = 3.0,
                  vad_noise_alpha: float = 0.1,
                  vad_hangover_factor: float = 0.6,
-                 vad_preroll_sec: float = 0.2):
+                 vad_preroll_sec: float = 0.2,
+                 ready_hold_sec: float = 10.0):
         """
         Initialisiere Live-Vosk-Spracherkennung.
         
@@ -264,6 +265,8 @@ class LiveVoskRecognition:
         self._last_tts_text = ""
         self._pending_prefix = ""
         self._last_activity_ts = time.time()
+        self._force_ready_until = 0.0
+        self.ready_hold_sec = ready_hold_sec
         self.context_mode = False
         self.prompt_new = prompt_new
         self.prompt_context = prompt_context
@@ -389,7 +392,13 @@ class LiveVoskRecognition:
         if self.oled and self.oled.device:
             self.oled.show_text_scroll(text)
 
-    def _set_listening(self, active: bool, reason: str, context_mode: bool | None = None) -> None:
+    def _set_listening(
+        self,
+        active: bool,
+        reason: str,
+        context_mode: bool | None = None,
+        announce: bool = True,
+    ) -> None:
         if context_mode is not None:
             self.context_mode = context_mode
         status_text = "BEREIT MIT Kontext" if active and self.context_mode else "BEREIT" if active else "PAUSE"
@@ -403,9 +412,11 @@ class LiveVoskRecognition:
         print(f"STATUS: {status_text} ({reason})")
         if active:
             self._last_activity_ts = time.time()
-            play_beep_sequence(device=self.audio_output_device, announce=False)
+            if announce:
+                play_beep_sequence(device=self.audio_output_device, announce=False)
         elif prev_active and not active:
             self.context_mode = False
+            self._force_ready_until = 0.0
             play_hangup_tone(device=self.audio_output_device, announce=False)
 
     def _debug(self, msg: str) -> None:
@@ -435,7 +446,9 @@ class LiveVoskRecognition:
     def _on_tts_done(self, text: str) -> None:
         self._last_tts_text = (text or "").strip().lower()
         self._ignore_until = time.time() + self.chat_ignore_after_tts_sec
-        self._set_listening(False, "TTS fertig", context_mode=False)
+        self._last_activity_ts = time.time()
+        self._force_ready_until = time.time() + self.ready_hold_sec
+        self._set_listening(True, "Antwort fertig", context_mode=False, announce=False)
 
     def _announce_chat_filter_block(self, reason: str | None) -> None:
         if not self.chat_assistant:
@@ -529,6 +542,9 @@ class LiveVoskRecognition:
         self._pending_prefix = ""
         if self.semantic_processor:
             self.semantic_processor.reset()
+        self._last_activity_ts = time.time()
+        self._force_ready_until = time.time() + self.ready_hold_sec
+        self._set_listening(True, "Frage verworfen", context_mode=False, announce=False)
 
     def _handle_confirmation(self, text: str) -> bool:
         if not self._awaiting_confirm:
@@ -869,7 +885,9 @@ class LiveVoskRecognition:
             # Kontinuierliche Verarbeitung
             while self.is_running:
                 if self.listening_active and self.auto_pause_after_sec > 0:
-                    if (time.time() - self._last_activity_ts) >= self.auto_pause_after_sec:
+                    if self._force_ready_until and time.time() < self._force_ready_until:
+                        pass
+                    elif (time.time() - self._last_activity_ts) >= self.auto_pause_after_sec:
                         self._set_listening(False, "Inaktivität")
                 self._process_chunk()
         except KeyboardInterrupt:
@@ -979,6 +997,7 @@ def run_live_vosk_recognition(model_path: Optional[str] = None, enable_chatgpt: 
         vad_noise_alpha=settings.vad_noise_alpha,
         vad_hangover_factor=settings.vad_hangover_factor,
         vad_preroll_sec=settings.vad_preroll_sec,
+        ready_hold_sec=settings.ready_hold_sec,
     )
 
     if chat_assistant and hasattr(chat_assistant, "set_on_tts_done"):
