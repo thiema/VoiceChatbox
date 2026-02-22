@@ -650,6 +650,11 @@ class LiveSpeechRecognition:
             self.oled.show_listening()
 
         self._set_listening(False, "Start")
+        if self.debug_logs:
+            self._debug(
+                f"auto_pause_after_sec={self.auto_pause_after_sec} "
+                f"ready_hold_sec={self.ready_hold_sec}"
+            )
         play_status_listening(device=self.audio_output_device)
         
         # Geräteauswahl anzeigen + Fallback
