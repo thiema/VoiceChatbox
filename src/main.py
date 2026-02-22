@@ -283,6 +283,11 @@ def main():
             wav_bytes = record_while_pressed(lambda: ptt.is_pressed, device=settings.audio_input_device)
             leds.set(Status.THINKING)
 
+            if settings.play_input_before_stt:
+                try:
+                    play_wav_bytes(wav_bytes, device=settings.audio_output_device, announce=False)
+                except Exception as e:
+                    print(f"Audio-Playback-Fehler: {e}")
             user_text = transcribe_fn(wav_bytes)
 
             if not user_text:

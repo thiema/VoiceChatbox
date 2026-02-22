@@ -19,6 +19,7 @@ from .audio_io import (
     play_hangup_tone,
     stop_playback,
     record_audio_chunk,
+    play_wav_bytes,
 )
 from .oled_display import OledDisplay
 from .sentence_detection import (
@@ -55,7 +56,8 @@ class LiveSpeechRecognition:
                  confirm_timeout_sec: float = 6.0,
                  ready_hold_sec: float = 10.0,
                  transcribe_fn: Optional[Callable[[bytes], str]] = None,
-                 min_speech_sec: float = 0.6):
+                 min_speech_sec: float = 0.6,
+                 play_input_before_stt: bool = False):
         self.client = client
         self.model_stt = model_stt
         self.transcribe_fn = transcribe_fn
@@ -68,6 +70,7 @@ class LiveSpeechRecognition:
         self.noise_floor = 0.0
         self.noise_alpha = 0.95
         self.min_speech_sec = min_speech_sec
+        self.play_input_before_stt = play_input_before_stt
         self.max_buffer_sec = 20.0
         self.is_running = False
         self.current_text = ""
@@ -119,6 +122,11 @@ class LiveSpeechRecognition:
     
     def _transcribe_audio(self, wav_bytes: bytes) -> str:
         """Transkribiere Audio-Daten zu Text."""
+        if self.play_input_before_stt:
+            try:
+                play_wav_bytes(wav_bytes, device=self.audio_output_device, announce=False)
+            except Exception as e:
+                print(f"Audio-Playback-Fehler: {e}")
         if self.transcribe_fn:
             try:
                 return (self.transcribe_fn(wav_bytes) or "").strip()
@@ -778,6 +786,7 @@ def run_live_recognition(enable_chatgpt: bool = False):
         ready_hold_sec=settings.ready_hold_sec,
         transcribe_fn=transcribe_fn,
         min_speech_sec=settings.min_speech_sec,
+        play_input_before_stt=settings.play_input_before_stt,
     )
 
     if chat_assistant and hasattr(chat_assistant, "set_on_tts_done"):

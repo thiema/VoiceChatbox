@@ -9,7 +9,7 @@ from typing import Callable, Optional
 from openai import OpenAI
 
 from .config import load_settings
-from .audio_io import record_while_pressed, _resolve_device_id
+from .audio_io import record_while_pressed, _resolve_device_id, play_wav_bytes
 from .oled_display import OledDisplay
 from .gpio_inputs import PushToTalk
 from .led_status import LedStatus, Status
@@ -28,10 +28,12 @@ class PTTLiveRecognition:
                  confirm_phrases: tuple[str, ...] | None = None,
                  reject_phrases: tuple[str, ...] | None = None,
                  confirm_timeout_sec: float = 6.0,
-                 transcribe_fn: Optional[Callable[[bytes], str]] = None):
+                 transcribe_fn: Optional[Callable[[bytes], str]] = None,
+                 play_input_before_stt: bool = False):
         self.client = client
         self.model_stt = model_stt
         self.transcribe_fn = transcribe_fn
+        self.play_input_before_stt = play_input_before_stt
         self.ptt = ptt
         self.leds = leds
         self.device_id = _resolve_device_id(device)
@@ -55,6 +57,11 @@ class PTTLiveRecognition:
     
     def _transcribe_audio(self, wav_bytes: bytes) -> str:
         """Transkribiere Audio-Daten zu Text."""
+        if self.play_input_before_stt:
+            try:
+                play_wav_bytes(wav_bytes, device=self.device_id, announce=False)
+            except Exception as e:
+                print(f"Audio-Playback-Fehler: {e}")
         if self.transcribe_fn:
             try:
                 return (self.transcribe_fn(wav_bytes) or "").strip()
@@ -879,6 +886,7 @@ def run_ptt_live_recognition(use_vosk: bool = False, enable_chatgpt: bool = Fals
             reject_phrases=tuple(settings.reject_phrases),
             confirm_timeout_sec=settings.confirm_timeout_sec,
             transcribe_fn=transcribe_fn,
+            play_input_before_stt=settings.play_input_before_stt,
         )
         recognizer.start(oled=oled)
 

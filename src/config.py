@@ -75,6 +75,7 @@ class Settings:
     whisper_cpp_threads: int
     whisper_cpp_temperature: float
     whisper_cpp_extra_args: str | None
+    play_input_before_stt: bool
 
 def load_settings() -> Settings:
     key = os.getenv("OPENAI_API_KEY", "").strip()
@@ -123,6 +124,7 @@ def load_settings() -> Settings:
     whisper_cpp_threads = int(os.getenv("WHISPER_CPP_THREADS", "4"))
     whisper_cpp_temperature = float(os.getenv("WHISPER_CPP_TEMPERATURE", "0.0"))
     whisper_cpp_extra_args = os.getenv("WHISPER_CPP_EXTRA_ARGS") or None
+    play_input_before_stt = _get_bool("PLAY_INPUT_BEFORE_STT", False)
     chat_system_prompt_new = os.getenv(
         "CHAT_SYSTEM_PROMPT_NEW",
         "Du behandelst jede Eingabe als eigenständige, neue Frage. "
@@ -196,4 +198,5 @@ def load_settings() -> Settings:
         whisper_cpp_threads=whisper_cpp_threads,
         whisper_cpp_temperature=whisper_cpp_temperature,
         whisper_cpp_extra_args=whisper_cpp_extra_args,
+        play_input_before_stt=play_input_before_stt,
     )
