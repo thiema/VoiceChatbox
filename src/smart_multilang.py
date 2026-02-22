@@ -84,6 +84,9 @@ class SmartMultiLanguageVoskRecognition:
         self.vad_noise_multiplier = vad_noise_multiplier
         self.vad_noise_alpha = vad_noise_alpha
         self.vad_hangover_factor = max(0.1, min(vad_hangover_factor, 1.0))
+        self.vad_preroll_sec = max(0.0, vad_preroll_sec)
+        self._preroll_samples = int(self.samplerate * self.vad_preroll_sec)
+        self._preroll_tail = np.zeros(0, dtype=np.int16)
         self._noise_floor = 0.0
         self.chat_assistant = chat_assistant
         self._last_chat_text: Optional[str] = None
@@ -585,6 +588,8 @@ class SmartMultiLanguageVoskRecognition:
     
     def _process_chunk(self) -> None:
         """Verarbeite einen Audio-Chunk."""
+        chunk_audio = None
+        preroll_tail = self._preroll_tail
         try:
             # Während Ausgabe nichts aufnehmen
             wait_for_playback_end()
@@ -594,12 +599,14 @@ class SmartMultiLanguageVoskRecognition:
             # Audio aufnehmen
             self._debug("record_chunk: start")
             audio_data = self._record_chunk()
+            chunk_audio = audio_data
             self._debug(f"record_chunk: done len={len(audio_data)}")
             
             if not self.is_running:
                 return
             
             # Voice Activity Detection
+            speech_was_active = self._speech_active
             if not self._detect_speech(audio_data, threshold=0.005):
                 if self.pause_duration:
                     self._silence_sec += self.chunk_duration
@@ -611,6 +618,10 @@ class SmartMultiLanguageVoskRecognition:
                 if self.pause_duration:
                     self._speech_active = True
                     self._silence_sec = 0.0
+                if not speech_was_active and self._preroll_samples > 0 and preroll_tail.size:
+                    audio_data = np.concatenate([preroll_tail, audio_data])
+                    if self.debug_logs:
+                        self._debug(f"vad: preroll {len(preroll_tail)} samples prepended")
             
             # Transkribiere mit deutschem Modell (Hauptsprache)
             text_de = self._transcribe_audio_de(audio_data)
@@ -776,6 +787,12 @@ class SmartMultiLanguageVoskRecognition:
                 pass
         except Exception as e:
             print(f"Fehler bei Verarbeitung: {e}")
+        finally:
+            if chunk_audio is not None and self._preroll_samples > 0:
+                if chunk_audio.size > self._preroll_samples:
+                    self._preroll_tail = chunk_audio[-self._preroll_samples:].copy()
+                else:
+                    self._preroll_tail = chunk_audio.copy()
     
     def start(self, oled: Optional[OledDisplay] = None) -> None:
         """Starte die Live-Spracherkennung."""
@@ -882,6 +899,7 @@ def run_smart_multilang_recognition(
         vad_noise_multiplier=settings.vad_noise_multiplier,
         vad_noise_alpha=settings.vad_noise_alpha,
         vad_hangover_factor=settings.vad_hangover_factor,
+        vad_preroll_sec=settings.vad_preroll_sec,
         wake_phrases=tuple(settings.wake_phrases),
         context_phrases=tuple(settings.context_phrases),
         stop_phrases=tuple(settings.stop_phrases),

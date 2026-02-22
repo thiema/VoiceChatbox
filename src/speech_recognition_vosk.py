@@ -217,7 +217,8 @@ class LiveVoskRecognition:
                  vad_rms_threshold: float = 0.01,
                  vad_noise_multiplier: float = 3.0,
                  vad_noise_alpha: float = 0.1,
-                 vad_hangover_factor: float = 0.6):
+                 vad_hangover_factor: float = 0.6,
+                 vad_preroll_sec: float = 0.2):
         """
         Initialisiere Live-Vosk-Spracherkennung.
         
@@ -278,6 +279,9 @@ class LiveVoskRecognition:
         self.vad_noise_multiplier = vad_noise_multiplier
         self.vad_noise_alpha = vad_noise_alpha
         self.vad_hangover_factor = max(0.1, min(vad_hangover_factor, 1.0))
+        self.vad_preroll_sec = max(0.0, vad_preroll_sec)
+        self._preroll_samples = int(self.samplerate * self.vad_preroll_sec)
+        self._preroll_tail = np.zeros(0, dtype=np.int16)
         self._noise_floor = 0.0
     
     def set_text_callback(self, callback: Callable[[str], None]) -> None:
@@ -591,6 +595,8 @@ class LiveVoskRecognition:
     
     def _process_chunk(self) -> None:
         """Nimmt einen Chunk auf, transkribiert ihn und aktualisiert das Display."""
+        chunk_audio = None
+        preroll_tail = self._preroll_tail
         try:
             # Während Ausgabe nichts aufnehmen
             wait_for_playback_end()
@@ -600,12 +606,14 @@ class LiveVoskRecognition:
             # Audio aufnehmen
             self._debug("record_chunk: start")
             raw_audio, audio_data = self._record_chunk()
+            chunk_audio = audio_data
             self._debug(f"record_chunk: done len={len(audio_data)}")
             
             if not self.is_running:
                 return
             
             # Voice Activity Detection - überspringe leise Chunks
+            speech_was_active = self._speech_active
             if not self._detect_speech(raw_audio, threshold=0.005):
                 if self.pause_duration:
                     self._silence_sec += self.chunk_duration
@@ -617,6 +625,10 @@ class LiveVoskRecognition:
                 if self.pause_duration:
                     self._speech_active = True
                     self._silence_sec = 0.0
+                if not speech_was_active and self._preroll_samples > 0 and preroll_tail.size:
+                    audio_data = np.concatenate([preroll_tail, audio_data])
+                    if self.debug_logs:
+                        self._debug(f"vad: preroll {len(preroll_tail)} samples prepended")
             
             # Transkribieren (direkt mit numpy-Array)
             self._debug("transcribe: start")
@@ -795,6 +807,12 @@ class LiveVoskRecognition:
                 pass
         except Exception as e:
             print(f"Fehler bei Verarbeitung: {e}")
+        finally:
+            if chunk_audio is not None and self._preroll_samples > 0:
+                if chunk_audio.size > self._preroll_samples:
+                    self._preroll_tail = chunk_audio[-self._preroll_samples:].copy()
+                else:
+                    self._preroll_tail = chunk_audio.copy()
     
     def start(self, oled: Optional[OledDisplay] = None) -> None:
         """Starte die Live-Spracherkennung."""
@@ -931,6 +949,7 @@ def run_live_vosk_recognition(model_path: Optional[str] = None, enable_chatgpt: 
         vad_noise_multiplier=settings.vad_noise_multiplier,
         vad_noise_alpha=settings.vad_noise_alpha,
         vad_hangover_factor=settings.vad_hangover_factor,
+        vad_preroll_sec=settings.vad_preroll_sec,
     )
 
     if chat_assistant and hasattr(chat_assistant, "set_on_tts_done"):
