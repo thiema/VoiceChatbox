@@ -58,7 +58,8 @@ class LiveSpeechRecognition:
                  ready_hold_sec: float = 10.0,
                  transcribe_fn: Optional[Callable[[bytes], str]] = None,
                  min_speech_sec: float = 0.6,
-                 play_input_before_stt: bool = False):
+                 play_input_before_stt: bool = False,
+                 confirm_min_speech_sec: float = 0.2):
         self.client = client
         self.model_stt = model_stt
         self.transcribe_fn = transcribe_fn
@@ -72,6 +73,7 @@ class LiveSpeechRecognition:
         self.noise_alpha = 0.95
         self.min_speech_sec = min_speech_sec
         self.play_input_before_stt = play_input_before_stt
+        self.confirm_min_speech_sec = confirm_min_speech_sec
         self.max_buffer_sec = 20.0
         self.is_running = False
         self.current_text = ""
@@ -613,7 +615,8 @@ class LiveSpeechRecognition:
             self._silence_sec += self.chunk_duration
             if self._silence_sec >= self.pause_duration and self._audio_buffer:
                 total_sec = (sum(len(a) for a in self._audio_buffer) / self.samplerate)
-                if total_sec < self.min_speech_sec:
+                min_sec = self.confirm_min_speech_sec if self._awaiting_confirm else self.min_speech_sec
+                if total_sec < min_sec:
                     # Zu kurz -> verwerfen (verhindert Rauschen/Artefakte)
                     self._audio_buffer.clear()
                     self._speech_active = False
@@ -789,6 +792,7 @@ def run_live_recognition(enable_chatgpt: bool = False):
         transcribe_fn=transcribe_fn,
         min_speech_sec=settings.min_speech_sec,
         play_input_before_stt=settings.play_input_before_stt,
+        confirm_min_speech_sec=settings.confirm_min_speech_sec,
     )
 
     if chat_assistant and hasattr(chat_assistant, "set_on_tts_done"):
