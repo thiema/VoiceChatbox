@@ -163,10 +163,12 @@ class ChatAssistant:
     def _load_history(self) -> None:
         try:
             if not os.path.exists(self._history_path):
+                print("Historie: 0 Aufnahmen vorhanden.")
                 return
             with open(self._history_path, "r", encoding="utf-8") as f:
                 data = json.load(f)
             if not isinstance(data, list):
+                print("Historie: 0 Aufnahmen vorhanden.")
                 return
             for item in data[-self._history_max:]:
                 if not isinstance(item, dict):
@@ -192,6 +194,7 @@ class ChatAssistant:
                 if not wav_bytes:
                     continue
                 self._history.append((text, wav_bytes, ogg_rel))
+            print(f"Historie: {len(self._history)} Aufnahme(n) vorhanden.")
         except Exception as e:
             print(f"Historie laden fehlgeschlagen: {e}")
 
