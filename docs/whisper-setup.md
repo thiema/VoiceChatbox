@@ -1,4 +1,4 @@
-# Whisper Sprachmodell Setup (OpenAI API, Cloud)
+# Whisper Sprachmodell Setup (OpenAI API, Cloud) + whisper.cpp (lokal)
 
 Diese Anleitung erklärt, wie du OpenAI Whisper für die Spracherkennung einrichtest und konfigurierst.
 
@@ -13,6 +13,57 @@ Diese Anleitung erklärt, wie du OpenAI Whisper für die Spracherkennung einrich
 - ⚠️ **Internet-Verbindung erforderlich**
 - ⚠️ **API-Kosten** (je nach Modell und Nutzung)
 - ⚠️ **Netzwerk-Latenz** (Audio wird an OpenAI gesendet)
+
+---
+
+## Alternative: whisper.cpp (lokal, offline)
+
+**whisper.cpp** ist eine lokale C++‑Implementierung von Whisper:
+- ✅ **Kein Internet nötig**
+- ✅ **Keine API‑Kosten**
+- ⚠️ **Mehr CPU‑Last**
+- ⚠️ **Modell muss lokal geladen werden**
+
+### 1. Installation von whisper.cpp
+
+```bash
+# Repo klonen
+git clone https://github.com/ggerganov/whisper.cpp
+cd whisper.cpp
+
+# Build
+make -j
+```
+
+### 2. Modell herunterladen (ggml)
+
+```bash
+mkdir -p models
+cd models
+./download-ggml-model.sh base
+```
+
+### 3. Konfiguration in .env
+
+```bash
+# whisper.cpp aktivieren
+USE_WHISPER_CPP=true
+
+# Pfad zum Binary
+WHISPER_CPP_BIN=/home/marian/whisper.cpp/main
+
+# Pfad zum Modell
+WHISPER_CPP_MODEL=/home/marian/whisper.cpp/models/ggml-base.bin
+
+# Optional: Sprache (z.B. de, en) – leer = auto
+WHISPER_CPP_LANGUAGE=de
+
+# Threads
+WHISPER_CPP_THREADS=4
+
+# Optional: Extra-Args (z.B. "-p 1")
+WHISPER_CPP_EXTRA_ARGS=
+```
 
 ---
 
@@ -113,6 +164,9 @@ python -m src.main
 ```bash
 # Mit Whisper (OpenAI API, Standard)
 python -m src.main --live-recognition
+
+# Mit whisper.cpp (lokal)
+USE_WHISPER_CPP=true python -m src.main --live-recognition
 ```
 
 Die Live-Erkennung zeigt den erkannten Text kontinuierlich auf dem OLED-Display an.

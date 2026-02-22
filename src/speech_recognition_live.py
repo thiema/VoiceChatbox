@@ -53,9 +53,11 @@ class LiveSpeechRecognition:
                  confirm_phrases: tuple[str, ...] | None = None,
                  reject_phrases: tuple[str, ...] | None = None,
                  confirm_timeout_sec: float = 6.0,
-                 ready_hold_sec: float = 10.0):
+                 ready_hold_sec: float = 10.0,
+                 transcribe_fn: Optional[Callable[[bytes], str]] = None):
         self.client = client
         self.model_stt = model_stt
+        self.transcribe_fn = transcribe_fn
         self.device_spec = device
         self.device_id = _resolve_device_id(device)
         self.samplerate = 16000
@@ -116,6 +118,12 @@ class LiveSpeechRecognition:
     
     def _transcribe_audio(self, wav_bytes: bytes) -> str:
         """Transkribiere Audio-Daten zu Text."""
+        if self.transcribe_fn:
+            try:
+                return (self.transcribe_fn(wav_bytes) or "").strip()
+            except Exception as e:
+                print(f"Whisper.cpp Fehler: {e}")
+                return ""
         import tempfile
         import os
         
@@ -662,6 +670,19 @@ def run_live_recognition(enable_chatgpt: bool = False):
     
     settings = load_settings()
     client = OpenAI(api_key=settings.openai_api_key)
+    transcribe_fn = None
+    if settings.use_whisper_cpp:
+        from .whisper_cpp import transcribe_wav_bytes
+        def _whispercpp_transcribe(wav_bytes: bytes) -> str:
+            return transcribe_wav_bytes(
+                wav_bytes,
+                bin_path=settings.whisper_cpp_bin,
+                model_path=settings.whisper_cpp_model,
+                language=settings.whisper_cpp_language,
+                threads=settings.whisper_cpp_threads,
+                extra_args=settings.whisper_cpp_extra_args,
+            )
+        transcribe_fn = _whispercpp_transcribe
     
     # OLED initialisieren
     oled = None
@@ -731,6 +752,7 @@ def run_live_recognition(enable_chatgpt: bool = False):
         reject_phrases=tuple(settings.reject_phrases),
         confirm_timeout_sec=settings.confirm_timeout_sec,
         ready_hold_sec=settings.ready_hold_sec,
+        transcribe_fn=transcribe_fn,
     )
 
     if chat_assistant and hasattr(chat_assistant, "set_on_tts_done"):

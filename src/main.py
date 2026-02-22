@@ -9,6 +9,7 @@ from . import __version__
 from .gpio_inputs import PushToTalk
 from .led_status import LedStatus, Status
 from .audio_io import record_while_pressed, play_wav_bytes
+from .whisper_cpp import transcribe_wav_bytes
 
 def _tts_play(
     client: OpenAI,
@@ -37,6 +38,20 @@ def _stt_transcribe(client: OpenAI, model_stt: str, wav_bytes: bytes) -> str:
             os.remove(wav_path)
         except OSError:
             pass
+
+def _make_transcribe_fn(settings, client: OpenAI):
+    if settings.use_whisper_cpp:
+        def _whispercpp_transcribe(wav_bytes: bytes) -> str:
+            return transcribe_wav_bytes(
+                wav_bytes,
+                bin_path=settings.whisper_cpp_bin,
+                model_path=settings.whisper_cpp_model,
+                language=settings.whisper_cpp_language,
+                threads=settings.whisper_cpp_threads,
+                extra_args=settings.whisper_cpp_extra_args,
+            )
+        return _whispercpp_transcribe
+    return lambda wav_bytes: _stt_transcribe(client, settings.model_stt, wav_bytes)
 
 def test_leds():
     s = load_settings()
@@ -73,7 +88,7 @@ def test_ptt():
         leds.set(Status.IDLE)
         print("\nBeendet.")
 
-def _select_mode_by_voice(client: OpenAI, settings, ptt: PushToTalk, leds: LedStatus) -> str:
+def _select_mode_by_voice(transcribe_fn, client: OpenAI, settings, ptt: PushToTalk, leds: LedStatus) -> str:
     prompt = (
         "Willkommen. Bitte sage jetzt entweder: Echo. Oder: Chatbox. "
         "Halte dazu den Kontakt gedrückt und sprich."
@@ -92,7 +107,7 @@ def _select_mode_by_voice(client: OpenAI, settings, ptt: PushToTalk, leds: LedSt
         wav_bytes = record_while_pressed(lambda: ptt.is_pressed, device=settings.audio_input_device)
         leds.set(Status.THINKING)
 
-        text = _stt_transcribe(client, settings.model_stt, wav_bytes).lower()
+        text = (transcribe_fn(wav_bytes) or "").lower()
         if "echo" in text:
             _tts_play(
                 client,
@@ -244,6 +259,7 @@ def main():
         return
 
     client = OpenAI(api_key=settings.openai_api_key)
+    transcribe_fn = _make_transcribe_fn(settings, client)
 
     leds = LedStatus(settings.gpio_led_red, settings.gpio_led_yellow, settings.gpio_led_green, enabled=True)
     leds.set(Status.IDLE)
@@ -253,7 +269,7 @@ def main():
     if forced_mode in ("echo", "chatbox"):
         mode = forced_mode
     else:
-        mode = _select_mode_by_voice(client, settings, ptt, leds)
+        mode = _select_mode_by_voice(transcribe_fn, client, settings, ptt, leds)
 
     print(f"Modus: {mode}")
     print("Bereit. Kontakt gedrückt halten zum Sprechen. Strg+C zum Beenden.")
@@ -266,7 +282,7 @@ def main():
             wav_bytes = record_while_pressed(lambda: ptt.is_pressed, device=settings.audio_input_device)
             leds.set(Status.THINKING)
 
-            user_text = _stt_transcribe(client, settings.model_stt, wav_bytes)
+            user_text = transcribe_fn(wav_bytes)
 
             if not user_text:
                 leds.set(Status.IDLE)

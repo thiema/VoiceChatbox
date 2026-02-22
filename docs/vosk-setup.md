@@ -137,6 +137,13 @@ VAD_HANGOVER_FACTOR=0.6
 
 # Vorlauf-Puffer in Sekunden, um Satzanfänge nicht zu verlieren.
 VAD_PREROLL_SEC=0.2
+
+# WebRTC VAD (robuster gegen Rauschen)
+VAD_USE_WEBRTCVAD=true
+# Aggressiveness: 0 (locker) .. 3 (streng)
+VAD_WEBRTCVAD_MODE=2
+# Frame-Länge in ms (10/20/30)
+VAD_WEBRTCVAD_FRAME_MS=30
 ```
 
 **Tuning-Tipps:**

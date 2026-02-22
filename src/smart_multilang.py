@@ -44,6 +44,9 @@ class SmartMultiLanguageVoskRecognition:
                  vad_noise_alpha: float = 0.1,
                  vad_hangover_factor: float = 0.6,
                  vad_preroll_sec: float = 0.2,
+                 vad_use_webrtcvad: bool = True,
+                 vad_webrtcvad_mode: int = 2,
+                 vad_webrtcvad_frame_ms: int = 30,
                  wake_phrases: tuple[str, ...] | None = None,
                  context_phrases: tuple[str, ...] | None = None,
                  stop_phrases: tuple[str, ...] | None = None,
@@ -89,6 +92,18 @@ class SmartMultiLanguageVoskRecognition:
         self.vad_preroll_sec = max(0.0, vad_preroll_sec)
         self._preroll_samples = int(self.samplerate * self.vad_preroll_sec)
         self._preroll_tail = np.zeros(0, dtype=np.int16)
+        self.vad_use_webrtcvad = vad_use_webrtcvad
+        self.vad_webrtcvad_mode = max(0, min(int(vad_webrtcvad_mode), 3))
+        self.vad_webrtcvad_frame_ms = 30 if int(vad_webrtcvad_frame_ms) not in (10, 20, 30) else int(vad_webrtcvad_frame_ms)
+        self._webrtcvad = None
+        if self.vad_use_webrtcvad:
+            try:
+                import webrtcvad  # type: ignore
+                self._webrtcvad = webrtcvad.Vad(self.vad_webrtcvad_mode)
+            except Exception as e:
+                if self.debug_logs:
+                    self._debug(f"webrtcvad: unavailable ({e})")
+                self._webrtcvad = None
         self._noise_floor = 0.0
         self.chat_assistant = chat_assistant
         self._last_chat_text: Optional[str] = None
@@ -285,7 +300,9 @@ class SmartMultiLanguageVoskRecognition:
         return audio_normalized
     
     def _detect_speech(self, audio: np.ndarray, threshold: float = 0.01) -> bool:
-        """Einfache Voice Activity Detection (VAD)."""
+        """Voice Activity Detection (VAD)."""
+        if self._webrtcvad is not None:
+            return self._detect_speech_webrtcvad(audio)
         audio_float = audio.astype(np.float32) / 32768.0
         rms = np.sqrt(np.mean(audio_float ** 2))
         base_threshold = self.vad_rms_threshold if self.vad_rms_threshold > 0 else threshold
@@ -304,6 +321,30 @@ class SmartMultiLanguageVoskRecognition:
                 f"hangover={self.vad_hangover_factor:.2f} th={effective_threshold:.6f}"
             )
         return rms > effective_threshold
+
+    def _detect_speech_webrtcvad(self, audio: np.ndarray) -> bool:
+        if audio.size == 0:
+            return False
+        if audio.dtype != np.int16:
+            audio = audio.astype(np.int16)
+        frame_len = int(self.samplerate * (self.vad_webrtcvad_frame_ms / 1000.0))
+        if frame_len <= 0:
+            return False
+        total_frames = 0
+        speech_frames = 0
+        data = audio.tobytes()
+        bytes_per_frame = frame_len * 2  # int16 mono
+        for i in range(0, len(data) - bytes_per_frame + 1, bytes_per_frame):
+            frame = data[i:i + bytes_per_frame]
+            total_frames += 1
+            try:
+                if self._webrtcvad.is_speech(frame, self.samplerate):
+                    speech_frames += 1
+            except Exception:
+                continue
+        if self.debug_logs:
+            self._debug(f"vad: webrtcvad frames={total_frames} speech={speech_frames}")
+        return speech_frames > 0
     
     def _merge_texts(self, text_de: str, text_en: str) -> str:
         """
@@ -948,6 +989,9 @@ def run_smart_multilang_recognition(
         vad_noise_alpha=settings.vad_noise_alpha,
         vad_hangover_factor=settings.vad_hangover_factor,
         vad_preroll_sec=settings.vad_preroll_sec,
+        vad_use_webrtcvad=settings.vad_use_webrtcvad,
+        vad_webrtcvad_mode=settings.vad_webrtcvad_mode,
+        vad_webrtcvad_frame_ms=settings.vad_webrtcvad_frame_ms,
         wake_phrases=tuple(settings.wake_phrases),
         context_phrases=tuple(settings.context_phrases),
         stop_phrases=tuple(settings.stop_phrases),

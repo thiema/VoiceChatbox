@@ -53,6 +53,9 @@ class Settings:
     vad_noise_alpha: float
     vad_hangover_factor: float
     vad_preroll_sec: float
+    vad_use_webrtcvad: bool
+    vad_webrtcvad_mode: int
+    vad_webrtcvad_frame_ms: int
     announce_chat_request: bool
     confirm_before_chat: bool
     confirm_phrases: list[str]
@@ -64,6 +67,12 @@ class Settings:
     history_dir: str
     history_max: int
     ready_hold_sec: float
+    use_whisper_cpp: bool
+    whisper_cpp_bin: str
+    whisper_cpp_model: str
+    whisper_cpp_language: str | None
+    whisper_cpp_threads: int
+    whisper_cpp_extra_args: str | None
 
 def load_settings() -> Settings:
     key = os.getenv("OPENAI_API_KEY", "").strip()
@@ -89,6 +98,9 @@ def load_settings() -> Settings:
     vad_noise_alpha = float(os.getenv("VAD_NOISE_ALPHA", "0.1"))
     vad_hangover_factor = float(os.getenv("VAD_HANGOVER_FACTOR", "0.6"))
     vad_preroll_sec = float(os.getenv("VAD_PREROLL_SEC", "0.2"))
+    vad_use_webrtcvad = _get_bool("VAD_USE_WEBRTCVAD", True)
+    vad_webrtcvad_mode = int(os.getenv("VAD_WEBRTCVAD_MODE", "2"))
+    vad_webrtcvad_frame_ms = int(os.getenv("VAD_WEBRTCVAD_FRAME_MS", "30"))
     announce_chat_request = _get_bool("ANNOUNCE_CHAT_REQUEST", True)
     confirm_before_chat = _get_bool("CONFIRM_BEFORE_CHAT", False)
     confirm_phrases = [p.strip().lower() for p in os.getenv("CONFIRM_PHRASES", "ok,okay,ja,yes").split(",") if p.strip()]
@@ -100,6 +112,12 @@ def load_settings() -> Settings:
     history_dir = os.getenv("HISTORY_DIR", "data/tts_history")
     history_max = int(os.getenv("HISTORY_MAX", "50"))
     ready_hold_sec = float(os.getenv("READY_HOLD_SEC", "10.0"))
+    use_whisper_cpp = _get_bool("USE_WHISPER_CPP", False)
+    whisper_cpp_bin = os.getenv("WHISPER_CPP_BIN", "whisper.cpp/main")
+    whisper_cpp_model = os.getenv("WHISPER_CPP_MODEL", "models/ggml-base.bin")
+    whisper_cpp_language = os.getenv("WHISPER_CPP_LANGUAGE") or None
+    whisper_cpp_threads = int(os.getenv("WHISPER_CPP_THREADS", "4"))
+    whisper_cpp_extra_args = os.getenv("WHISPER_CPP_EXTRA_ARGS") or None
     chat_system_prompt_new = os.getenv(
         "CHAT_SYSTEM_PROMPT_NEW",
         "Du behandelst jede Eingabe als eigenständige, neue Frage. "
@@ -151,6 +169,9 @@ def load_settings() -> Settings:
         vad_noise_alpha=vad_noise_alpha,
         vad_hangover_factor=vad_hangover_factor,
         vad_preroll_sec=vad_preroll_sec,
+        vad_use_webrtcvad=vad_use_webrtcvad,
+        vad_webrtcvad_mode=vad_webrtcvad_mode,
+        vad_webrtcvad_frame_ms=vad_webrtcvad_frame_ms,
         announce_chat_request=announce_chat_request,
         confirm_before_chat=confirm_before_chat,
         confirm_phrases=confirm_phrases,
@@ -162,4 +183,10 @@ def load_settings() -> Settings:
         history_dir=history_dir,
         history_max=history_max,
         ready_hold_sec=ready_hold_sec,
+        use_whisper_cpp=use_whisper_cpp,
+        whisper_cpp_bin=whisper_cpp_bin,
+        whisper_cpp_model=whisper_cpp_model,
+        whisper_cpp_language=whisper_cpp_language,
+        whisper_cpp_threads=whisper_cpp_threads,
+        whisper_cpp_extra_args=whisper_cpp_extra_args,
     )
