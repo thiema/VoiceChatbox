@@ -20,6 +20,7 @@ from .audio_io import (
     stop_playback,
     record_audio_chunk,
     play_wav_bytes,
+    play_status_listening,
 )
 from .oled_display import OledDisplay
 from .sentence_detection import (
@@ -646,6 +647,7 @@ class LiveSpeechRecognition:
             self.oled.show_listening()
 
         self._set_listening(False, "Start")
+        play_status_listening(device=self.audio_output_device)
         
         # Geräteauswahl anzeigen + Fallback
         self.device_id = select_input_device(self.device_spec, announce=True)

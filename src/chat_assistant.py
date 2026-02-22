@@ -12,7 +12,7 @@ from typing import Optional, Callable, Deque, Tuple, List, Dict
 
 from openai import OpenAI
 
-from .audio_io import play_wav_bytes
+from .audio_io import play_wav_bytes, play_status_waiting
 
 class ChatAssistant:
     """Send text to ChatGPT and play back the response with TTS."""
@@ -103,6 +103,7 @@ class ChatAssistant:
             if self.echo_input_before_chat:
                 self._tts_play(text, notify=False)
             system_prompt = (system_prompt_override or self.system_prompt).strip() or self.system_prompt
+            play_status_waiting(device=self.audio_output_device)
             chat = self.client.chat.completions.create(
                 model=self.model_chat,
                 messages=[

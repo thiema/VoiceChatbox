@@ -8,7 +8,7 @@ from .config import load_settings
 from . import __version__
 from .gpio_inputs import PushToTalk
 from .led_status import LedStatus, Status
-from .audio_io import record_while_pressed, play_wav_bytes
+from .audio_io import record_while_pressed, play_wav_bytes, play_status_listening
 from .whisper_cpp import transcribe_wav_bytes
 
 def _tts_play(
@@ -274,6 +274,7 @@ def main():
 
     print(f"Modus: {mode}")
     print("Bereit. Kontakt gedrückt halten zum Sprechen. Strg+C zum Beenden.")
+    play_status_listening(device=settings.audio_output_device)
 
     while True:
         try:

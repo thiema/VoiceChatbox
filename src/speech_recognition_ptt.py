@@ -9,7 +9,7 @@ from typing import Callable, Optional
 from openai import OpenAI
 
 from .config import load_settings
-from .audio_io import record_while_pressed, _resolve_device_id, play_wav_bytes
+from .audio_io import record_while_pressed, _resolve_device_id, play_wav_bytes, play_status_listening
 from .oled_display import OledDisplay
 from .gpio_inputs import PushToTalk
 from .led_status import LedStatus, Status
@@ -191,6 +191,8 @@ class PTTLiveRecognition:
         
         if self.leds:
             self.leds.set(Status.IDLE)
+        play_status_listening(device=self.vosk.device_id)
+        play_status_listening(device=self.device_id)
         
         print("="*60)
         print("Push-to-Talk Live-Spracherkennung")

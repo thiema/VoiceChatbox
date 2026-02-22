@@ -17,6 +17,7 @@ from .audio_io import (
     play_hangup_tone,
     stop_playback,
     record_audio_chunk,
+    play_status_listening,
 )
 from .oled_display import OledDisplay
 from .chat_assistant import ChatAssistant
@@ -763,6 +764,7 @@ class LiveMultiLanguageVoskRecognition:
             self.oled.show_listening()
 
         self._set_listening(False, "Start")
+        play_status_listening(device=self.audio_output_device)
         
         print("="*60)
         print("Mehrsprachige Live-Spracherkennung (Vosk)")

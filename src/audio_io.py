@@ -16,6 +16,9 @@ _playback_active = threading.Event()
 _volume_lock = threading.Lock()
 _idle_muted = False
 
+def _status_sound_enabled() -> bool:
+    return os.getenv("STATUS_SOUND_ENABLED", "true").strip().lower() in ("1", "true", "yes", "y", "on")
+
 def is_playback_active() -> bool:
     return _playback_active.is_set()
 
@@ -202,7 +205,11 @@ def select_input_device(device_spec: str | int | None, announce: bool = True) ->
                     f"Fallback auf erstes verfügbares Gerät (ID: {fallback_id}).",
                     file=sys.stderr
                 )
+            play_error_tone(device=None)
             device_id = fallback_id
+        elif announce:
+            print("❌ Kein Eingabegerät gefunden.", file=sys.stderr)
+            play_error_tone(device=None)
     if announce and device_id is not None:
         try:
             dev_info = sd.query_devices(device_id)
@@ -244,7 +251,11 @@ def select_output_device(device_spec: str | int | None, announce: bool = True) -
                     f"Fallback auf erstes verfügbares Gerät (ID: {fallback_id}).",
                     file=sys.stderr
                 )
+            play_error_tone(device=fallback_id)
             device_id = fallback_id
+        elif announce:
+            print("❌ Kein Ausgabegerät gefunden.", file=sys.stderr)
+            play_error_tone(device=None)
     if announce and device_id is not None:
         try:
             dev_info = sd.query_devices(device_id)
@@ -463,6 +474,24 @@ def play_hangup_tone(device: str | int | None = None, announce: bool = False) ->
         device=device,
         announce=announce,
     )
+
+def play_status_listening(device: str | int | None = None) -> None:
+    """Acoustic cue: recognition running."""
+    if not _status_sound_enabled():
+        return
+    play_beep_sequence(count=3, gap_sec=0.05, frequency=980.0, duration_sec=0.06, volume=0.18, device=device, announce=False)
+
+def play_status_waiting(device: str | int | None = None) -> None:
+    """Acoustic cue: waiting for OpenAI response."""
+    if not _status_sound_enabled():
+        return
+    play_beep_sequence(count=1, gap_sec=0.0, frequency=720.0, duration_sec=0.12, volume=0.18, device=device, announce=False)
+
+def play_error_tone(device: str | int | None = None) -> None:
+    """Acoustic cue: error."""
+    if not _status_sound_enabled():
+        return
+    play_beep_sequence(count=2, gap_sec=0.07, frequency=320.0, duration_sec=0.08, volume=0.2, device=device, announce=False)
 
 def record_while_pressed(is_pressed_fn, samplerate: int = 16000, device: str | int | None = None) -> bytes:
     """

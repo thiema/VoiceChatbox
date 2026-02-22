@@ -18,6 +18,7 @@ from .audio_io import (
     play_hangup_tone,
     stop_playback,
     record_audio_chunk,
+    play_status_listening,
 )
 from .oled_display import OledDisplay
 from .sentence_detection import (
@@ -935,6 +936,7 @@ class LiveVoskRecognition:
             self.oled.show_listening()
 
         self._set_listening(False, "Start")
+        play_status_listening(device=self.audio_output_device)
         # Signal: Vosk-Modell geladen und bereit für Spracheingabe
         try:
             play_beep_sequence(device=self.audio_output_device, announce=False)
