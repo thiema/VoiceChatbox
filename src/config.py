@@ -67,6 +67,7 @@ class Settings:
     history_dir: str
     history_max: int
     ready_hold_sec: float
+    min_speech_sec: float
     use_whisper_cpp: bool
     whisper_cpp_bin: str
     whisper_cpp_model: str
@@ -112,6 +113,7 @@ def load_settings() -> Settings:
     history_dir = os.getenv("HISTORY_DIR", "data/tts_history")
     history_max = int(os.getenv("HISTORY_MAX", "50"))
     ready_hold_sec = float(os.getenv("READY_HOLD_SEC", "10.0"))
+    min_speech_sec = float(os.getenv("MIN_SPEECH_SEC", "0.6"))
     use_whisper_cpp = _get_bool("USE_WHISPER_CPP", False)
     whisper_cpp_bin = os.getenv("WHISPER_CPP_BIN", "whisper.cpp/main")
     whisper_cpp_model = os.getenv("WHISPER_CPP_MODEL", "models/ggml-base.bin")
@@ -183,6 +185,7 @@ def load_settings() -> Settings:
         history_dir=history_dir,
         history_max=history_max,
         ready_hold_sec=ready_hold_sec,
+        min_speech_sec=min_speech_sec,
         use_whisper_cpp=use_whisper_cpp,
         whisper_cpp_bin=whisper_cpp_bin,
         whisper_cpp_model=whisper_cpp_model,

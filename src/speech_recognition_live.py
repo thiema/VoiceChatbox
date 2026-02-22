@@ -54,7 +54,8 @@ class LiveSpeechRecognition:
                  reject_phrases: tuple[str, ...] | None = None,
                  confirm_timeout_sec: float = 6.0,
                  ready_hold_sec: float = 10.0,
-                 transcribe_fn: Optional[Callable[[bytes], str]] = None):
+                 transcribe_fn: Optional[Callable[[bytes], str]] = None,
+                 min_speech_sec: float = 0.6):
         self.client = client
         self.model_stt = model_stt
         self.transcribe_fn = transcribe_fn
@@ -66,7 +67,7 @@ class LiveSpeechRecognition:
         self.silence_threshold = 0.02  # RMS-Schwellwert (0..1)
         self.noise_floor = 0.0
         self.noise_alpha = 0.95
-        self.min_speech_sec = 0.6
+        self.min_speech_sec = min_speech_sec
         self.max_buffer_sec = 20.0
         self.is_running = False
         self.current_text = ""
@@ -753,6 +754,7 @@ def run_live_recognition(enable_chatgpt: bool = False):
         confirm_timeout_sec=settings.confirm_timeout_sec,
         ready_hold_sec=settings.ready_hold_sec,
         transcribe_fn=transcribe_fn,
+        min_speech_sec=settings.min_speech_sec,
     )
 
     if chat_assistant and hasattr(chat_assistant, "set_on_tts_done"):
