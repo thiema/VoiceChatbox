@@ -598,12 +598,16 @@ def run_ptt_live_recognition(use_vosk: bool = False, enable_chatgpt: bool = Fals
             echo_input_before_chat=settings.echo_input_before_chat,
             echo_input_local_tts=settings.echo_input_local_tts,
             announce_chat_request=settings.announce_chat_request,
+            history_path=settings.history_path,
+            history_max=settings.history_max,
         )
         try:
             chat_assistant = ChatAssistant(**kwargs)
         except TypeError:
             kwargs.pop("announce_chat_request", None)
             kwargs.pop("echo_input_local_tts", None)
+            kwargs.pop("history_path", None)
+            kwargs.pop("history_max", None)
             try:
                 chat_assistant = ChatAssistant(**kwargs)
             except TypeError:

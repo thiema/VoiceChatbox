@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 import threading
+import base64
+import json
+import os
 from collections import deque
-from typing import Optional, Callable, Deque, Tuple
+from typing import Optional, Callable, Deque, Tuple, List, Dict
 
 from openai import OpenAI
 
@@ -22,6 +25,8 @@ class ChatAssistant:
         on_tts_done: Optional[Callable[[], None]] = None,
         system_prompt: str = "Du bist ein hilfreicher, knapper Sprachassistent.",
         echo_input_before_chat: bool = True,
+        history_path: str | None = None,
+        history_max: int = 50,
     ) -> None:
         self.client = client
         self.model_chat = model_chat
@@ -35,7 +40,9 @@ class ChatAssistant:
         self._inflight = False
         self._last_text: Optional[str] = None
         self._lock = threading.Lock()
-        self._history: Deque[Tuple[str, bytes]] = deque(maxlen=50)
+        self._history_path = history_path or "data/tts_history.json"
+        self._history: Deque[Tuple[str, bytes]] = deque(maxlen=max(1, history_max))
+        self._load_history()
 
     def set_on_tts_done(self, callback: Optional[Callable[[], None]]) -> None:
         self._on_tts_done = callback
@@ -102,6 +109,7 @@ class ChatAssistant:
             print(f"ChatGPT: {answer}")
             wav_bytes = self._tts_synthesize(answer)
             self._history.append((answer, wav_bytes))
+            self._save_history()
             self._play_wav_bytes(wav_bytes)
         except Exception as e:
             print(f"ChatGPT-Fehler: {e}")
@@ -144,3 +152,40 @@ class ChatAssistant:
         print(f"Historie {index}: {answer}")
         self._play_wav_bytes(wav_bytes)
         return True
+
+    def _load_history(self) -> None:
+        try:
+            if not os.path.exists(self._history_path):
+                return
+            with open(self._history_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            if not isinstance(data, list):
+                return
+            for item in data[-self._history.maxlen:]:
+                if not isinstance(item, dict):
+                    continue
+                text = (item.get("text") or "").strip()
+                wav_b64 = item.get("wav_b64") or ""
+                if not text or not wav_b64:
+                    continue
+                try:
+                    wav_bytes = base64.b64decode(wav_b64.encode("ascii"))
+                except Exception:
+                    continue
+                self._history.append((text, wav_bytes))
+        except Exception as e:
+            print(f"Historie laden fehlgeschlagen: {e}")
+
+    def _save_history(self) -> None:
+        try:
+            os.makedirs(os.path.dirname(self._history_path) or ".", exist_ok=True)
+            data: List[Dict[str, str]] = []
+            for text, wav_bytes in list(self._history):
+                data.append({
+                    "text": text,
+                    "wav_b64": base64.b64encode(wav_bytes).decode("ascii"),
+                })
+            with open(self._history_path, "w", encoding="utf-8") as f:
+                json.dump(data, f, ensure_ascii=False)
+        except Exception as e:
+            print(f"Historie speichern fehlgeschlagen: {e}")
