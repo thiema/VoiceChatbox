@@ -66,6 +66,14 @@ class ContextDetector:
                        'please', 'yes', 'no', 'okay', 'good', 'bad'}
             }
         }
+
+        # Häufige Mehrwort-Fehler (falsch → richtig)
+        self.common_phrase_errors: Dict[str, Dict[str, str]] = {
+            'de': {
+                'b raid': 'bereit',
+            },
+            'en': {}
+        }
         
         # Häufige Erkennungsfehler (falsch → richtig)
         self.common_errors: Dict[str, Dict[str, str]] = {
@@ -352,16 +360,35 @@ class ContextualSpeechCorrection:
         Returns:
             Tupel: (korrigierter_text, kontext, liste_von_korrekturen)
         """
+        # Mehrwort-Korrekturen zuerst anwenden
+        phrase_corrected, phrase_corrections = self._apply_phrase_corrections(text)
+
         # Erkenne Kontext
-        context = self.context_detector.detect_context(text, self.current_context)
+        context = self.context_detector.detect_context(phrase_corrected, self.current_context)
         
         # Korrigiere Text basierend auf Kontext
-        corrected_text, corrections = self.word_corrector.correct_text(text, context)
+        corrected_text, corrections = self.word_corrector.correct_text(phrase_corrected, context)
+        corrections = phrase_corrections + corrections
         
         # Aktualisiere Kontext
         self.current_context = context
         
         return (corrected_text, context, corrections)
+
+    def _apply_phrase_corrections(self, text: str) -> Tuple[str, List[Dict[str, str]]]:
+        corrections: List[Dict[str, str]] = []
+        corrected = text
+        phrase_errors = self.context_detector.common_phrase_errors.get(self.language, {})
+        for wrong, right in phrase_errors.items():
+            pattern = r"(?<!\w)" + re.escape(wrong) + r"(?!\w)"
+            if re.search(pattern, corrected, flags=re.IGNORECASE):
+                corrected = re.sub(pattern, right, corrected, flags=re.IGNORECASE)
+                corrections.append({
+                    'original': wrong,
+                    'corrected': right,
+                    'confidence': 0.95
+                })
+        return corrected, corrections
     
     def reset_context(self) -> None:
         """Setze Kontext zurück."""
