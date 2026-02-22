@@ -496,28 +496,29 @@ class SmartMultiLanguageVoskRecognition:
                 return int(match.group(1))
             except ValueError:
                 return None
-        return _history_word_to_index(norm)
+        return self._history_word_to_index(norm)
 
-def _history_word_to_index(norm_text: str) -> int | None:
-    match = re.search(r"\bhistorie\s+([a-zäöüß]+)\b", norm_text)
-    if not match:
-        return None
-    word = match.group(1)
-    mapping = {
-        "eins": 1,
-        "ein": 1,
-        "zwei": 2,
-        "drei": 3,
-        "vier": 4,
-        "fuenf": 5,
-        "fünf": 5,
-        "sechs": 6,
-        "sieben": 7,
-        "acht": 8,
-        "neun": 9,
-        "zehn": 10,
-    }
-    return mapping.get(word)
+    @staticmethod
+    def _history_word_to_index(norm_text: str) -> int | None:
+        match = re.search(r"\bhistorie\s+([a-zäöüß]+)\b", norm_text)
+        if not match:
+            return None
+        word = match.group(1)
+        mapping = {
+            "eins": 1,
+            "ein": 1,
+            "zwei": 2,
+            "drei": 3,
+            "vier": 4,
+            "fuenf": 5,
+            "fünf": 5,
+            "sechs": 6,
+            "sieben": 7,
+            "acht": 8,
+            "neun": 9,
+            "zehn": 10,
+        }
+        return mapping.get(word)
 
     def _handle_history_command(self, text: str) -> bool:
         if not self.chat_assistant:
