@@ -73,6 +73,7 @@ class Settings:
     whisper_cpp_model: str
     whisper_cpp_language: str | None
     whisper_cpp_threads: int
+    whisper_cpp_temperature: float
     whisper_cpp_extra_args: str | None
 
 def load_settings() -> Settings:
@@ -82,7 +83,8 @@ def load_settings() -> Settings:
 
     wake_phrases = [p.strip().lower() for p in os.getenv("WAKE_PHRASES", "ok google,okay google,hey google,start").split(",") if p.strip()]
     context_phrases = [p.strip().lower() for p in os.getenv(
-        "CONTEXT_PHRASES", "ok google weiter,okay google weiter,hey google weiter"
+        "CONTEXT_PHRASES",
+        "ok google weiter,okay google weiter,hey google weiter,ok weiter,okay weiter,weiter",
     ).split(",") if p.strip()]
     stop_phrases = [p.strip().lower() for p in os.getenv("STOP_PHRASES", "stopp,stop").split(",") if p.strip()]
     min_chat_words = int(os.getenv("MIN_CHAT_WORDS", "2"))
@@ -119,6 +121,7 @@ def load_settings() -> Settings:
     whisper_cpp_model = os.getenv("WHISPER_CPP_MODEL", "models/ggml-base.bin")
     whisper_cpp_language = os.getenv("WHISPER_CPP_LANGUAGE") or None
     whisper_cpp_threads = int(os.getenv("WHISPER_CPP_THREADS", "4"))
+    whisper_cpp_temperature = float(os.getenv("WHISPER_CPP_TEMPERATURE", "0.0"))
     whisper_cpp_extra_args = os.getenv("WHISPER_CPP_EXTRA_ARGS") or None
     chat_system_prompt_new = os.getenv(
         "CHAT_SYSTEM_PROMPT_NEW",
@@ -191,5 +194,6 @@ def load_settings() -> Settings:
         whisper_cpp_model=whisper_cpp_model,
         whisper_cpp_language=whisper_cpp_language,
         whisper_cpp_threads=whisper_cpp_threads,
+        whisper_cpp_temperature=whisper_cpp_temperature,
         whisper_cpp_extra_args=whisper_cpp_extra_args,
     )

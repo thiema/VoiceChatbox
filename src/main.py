@@ -48,6 +48,7 @@ def _make_transcribe_fn(settings, client: OpenAI):
                 model_path=settings.whisper_cpp_model,
                 language=settings.whisper_cpp_language,
                 threads=settings.whisper_cpp_threads,
+                temperature=settings.whisper_cpp_temperature,
                 extra_args=settings.whisper_cpp_extra_args,
             )
         return _whispercpp_transcribe

@@ -13,6 +13,7 @@ def transcribe_wav_bytes(
     model_path: str,
     language: Optional[str] = None,
     threads: int = 4,
+    temperature: float = 0.0,
     extra_args: Optional[str] = None,
 ) -> str:
     """Transcribe WAV bytes using whisper.cpp CLI."""
@@ -47,6 +48,8 @@ def transcribe_wav_bytes(
             "-t",
             str(max(1, int(threads))),
         ]
+        if temperature is not None:
+            cmd.extend(["--temperature", str(float(temperature))])
         if language:
             cmd.extend(["-l", language])
         if extra_args:
