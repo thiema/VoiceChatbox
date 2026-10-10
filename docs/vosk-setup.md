@@ -12,6 +12,18 @@ Diese Anleitung erklärt, wie du das lokale Vosk-Sprachmodell für die Spracherk
 - ✅ **Schnelle Erkennung** (keine Netzwerk-Latenz)
 - ✅ **Datenschutz** (Audio bleibt lokal)
 
+### Architektur (Live, lokal)
+
+Mic → continuous `InputStream` → VAD (WebRTC-Anteil + Preroll/Hangover) →
+ein `KaldiRecognizer` pro Äußerung → `FinalResult` → OLED/Chat.
+
+Audio-Vorverarbeitung: High-Pass (~80 Hz) + RMS-Ziel-AGC mit Gain-Cap
+(kein Peak-Normalize). VAD läuft auf **rohem** Audio.
+
+Für Deutsch: **DE-only** (`USE_MULTILANG=false`, `USE_SMART_MULTILANG=false`).
+Multilang-Heuristiken („längster Text“) verschlechtern oft die DE-Erkennung.
+
+
 ---
 
 ## 1. Vosk installieren
@@ -39,8 +51,8 @@ Vosk bietet verschiedene deutsche Modelle:
 
 | Modell | Größe | Genauigkeit | Empfehlung |
 |--------|-------|-------------|------------|
-| **vosk-model-de-0.22** | ~45 MB | Gut | ✅ **Empfohlen für Raspberry Pi** |
-| **vosk-model-de-0.6-900k** | ~1.8 GB | Sehr gut | Für bessere Genauigkeit |
+| **vosk-model-de-0.22** | ~45 MB | Gut | OK für schwächere Pis / wenig RAM |
+| **vosk-model-de-0.6-900k** | ~1.8 GB | Sehr gut | ✅ **Empfohlen für Pi 5** (beste lokale DE-Genauigkeit) |
 | **vosk-model-de-0.6** | ~1.8 GB | Sehr gut | Alternative |
 
 ### Download
@@ -51,14 +63,14 @@ Vosk bietet verschiedene deutsche Modelle:
    mkdir -p models
    cd models
    
-   # Kleines Modell (empfohlen)
-   wget https://alphacephei.com/vosk/models/vosk-model-small-ru-0.22.zip
-   wget https://alphacephei.com/vosk/models/vosk-model-small-de-0.15.zip
-   wget https://alphacephei.com/vosk/models/vosk-model-small-en-us-0.15.zip
+   # Standard DE (kompatibel mit VOSK_MODEL_PATH Default)
+   wget https://alphacephei.com/vosk/models/vosk-model-de-0.22.zip
    
-   # Oder großes Modell (bessere Genauigkeit)
-   wget https://alphacephei.com/vosk/models/vosk-model-de-0.21.zip
-   wget https://alphacephei.com/vosk/models/vosk-model-ru-0.42.zip
+   # Empfohlen für Pi 5 / bessere Genauigkeit (~1.8 GB)
+   wget https://alphacephei.com/vosk/models/vosk-model-de-0.6-900k.zip
+   
+   # Optional EN (nur wenn Multilang wirklich nötig)
+   wget https://alphacephei.com/vosk/models/vosk-model-en-us-0.22.zip
    ```
 
 2. **Modell entpacken:**
@@ -88,11 +100,17 @@ nano .env
 Füge hinzu:
 
 ```bash
-# Vosk Sprachmodell (lokal, offline)
+# Vosk Sprachmodell (lokal, offline) — DE-only für beste Qualität
 VOSK_MODEL_PATH=models/vosk-model-de-0.22
+# Pi 5 mit genug RAM:
+# VOSK_MODEL_PATH=models/vosk-model-de-0.6-900k
+
+# Multilang/Smart-Multilang für DE-first Qualität aus lassen
+USE_MULTILANG=false
+USE_SMART_MULTILANG=false
 
 # Optional: Standardmäßig Vosk verwenden
-USE_VOSK=false  # true = Vosk, false = OpenAI
+USE_VOSK=true  # true = Vosk lokal, false = OpenAI STT
 ```
 
 ### Empfohlene Defaults für bessere Erkennung
@@ -136,29 +154,41 @@ VAD_NOISE_ALPHA=0.1
 VAD_HANGOVER_FACTOR=0.6
 
 # Vorlauf-Puffer in Sekunden, um Satzanfänge nicht zu verlieren.
-VAD_PREROLL_SEC=0.2
+VAD_PREROLL_SEC=0.30
 
 # WebRTC VAD (robuster gegen Rauschen)
 VAD_USE_WEBRTCVAD=true
-# Aggressiveness: 0 (locker) .. 3 (streng)
-VAD_WEBRTCVAD_MODE=2
+# Aggressiveness: 0 (locker) .. 3 (streng); 1 = weicher für gesprochene Sprache
+VAD_WEBRTCVAD_MODE=1
 # Frame-Länge in ms (10/20/30)
 VAD_WEBRTCVAD_FRAME_MS=30
+# Mindestanteil Speech-Frames pro Block (statt „irgendein Frame“)
+VAD_SPEECH_RATIO=0.2
+
+# HPF + RMS-AGC (Gain-Cap). Zum A/B-Test auf false setzen.
+ENABLE_AUDIO_PROCESSING=true
 ```
 
 **Tuning-Tipps:**
-- Fehlende Satzanfänge → `VAD_PREROLL_SEC` erhöhen (0.25–0.3).
-- Fehlende Wörter in der Mitte → `VAD_RMS_THRESHOLD` leicht senken (0.008).
-- Zu frühes Satzende → `VAD_HANGOVER_FACTOR` senken (0.5–0.6).
+- Fehlende Satzanfänge → `VAD_PREROLL_SEC` erhöhen (0.30–0.40).
+- Zu viel Müll bei Stille → `VAD_SPEECH_RATIO` erhöhen (0.25–0.35).
+- Weiche Sprache wird abgeschnitten → `VAD_WEBRTCVAD_MODE=0` oder `1`.
+- Fehlende Wörter in der Mitte (RMS-Pfad) → `VAD_RMS_THRESHOLD` leicht senken (0.008).
+- Zu frühes Satzende → `VAD_HANGOVER_FACTOR` senken (0.45–0.55) bzw. `VOSK_PAUSE_DURATION` erhöhen.
+- Mic prüfen: `AUDIO_INPUT_DEVICE` exakt setzen; `DEBUG_LOGS=true` zeigt RMS/Peak/VAD.
+- ReSpeaker: Capture-Pegel so einstellen, dass Clipping und extremes AGC unnötig sind.
 
-### Vosk-Chunk/Pause
+### Live-Streaming / Pause
+
+Die Live-Vosk-Pipeline nutzt durchgehende Aufnahme (`InputStream`) und **einen
+KaldiRecognizer pro Äußerung** (kein Batch pro 3-s-Chunk mehr).
 
 ```bash
-# Länge pro Aufnahme-Chunk (Sekunden)
+# Legacy/Compat (Streaming nutzt VAD-Frames ~30 ms)
 VOSK_CHUNK_DURATION=3.0
 
-# Stille-Dauer bis Satzabschluss (Sekunden)
-VOSK_PAUSE_DURATION=0.9
+# Stille-Dauer bis Äußerungsende (Sekunden)
+VOSK_PAUSE_DURATION=1.2
 ```
 
 ### Status: BEREIT nach Antwort halten

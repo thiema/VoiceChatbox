@@ -43,10 +43,11 @@ class SmartMultiLanguageVoskRecognition:
                  vad_noise_multiplier: float = 3.0,
                  vad_noise_alpha: float = 0.1,
                  vad_hangover_factor: float = 0.6,
-                 vad_preroll_sec: float = 0.2,
+                 vad_preroll_sec: float = 0.30,
                  vad_use_webrtcvad: bool = True,
-                 vad_webrtcvad_mode: int = 2,
+                 vad_webrtcvad_mode: int = 1,
                  vad_webrtcvad_frame_ms: int = 30,
+                 vad_speech_ratio: float = 0.2,
                  wake_phrases: tuple[str, ...] | None = None,
                  context_phrases: tuple[str, ...] | None = None,
                  stop_phrases: tuple[str, ...] | None = None,
@@ -95,6 +96,7 @@ class SmartMultiLanguageVoskRecognition:
         self.vad_use_webrtcvad = vad_use_webrtcvad
         self.vad_webrtcvad_mode = max(0, min(int(vad_webrtcvad_mode), 3))
         self.vad_webrtcvad_frame_ms = 30 if int(vad_webrtcvad_frame_ms) not in (10, 20, 30) else int(vad_webrtcvad_frame_ms)
+        self.vad_speech_ratio = max(0.05, min(float(vad_speech_ratio), 0.9))
         self._webrtcvad = None
         if self.vad_use_webrtcvad:
             try:
@@ -283,21 +285,19 @@ class SmartMultiLanguageVoskRecognition:
         return buf.getvalue()
     
     def _normalize_audio(self, audio: np.ndarray) -> np.ndarray:
-        """Normalisiere Audio (DC-Offset entfernen, Normalisierung)."""
-        # Konvertiere zu float
+        """RMS-Ziel-AGC mit Gain-Cap (kein Peak-Normalize)."""
+        if audio.size == 0:
+            return audio
         audio_float = audio.astype(np.float32) / 32768.0
-        
-        # Entferne DC-Offset
         audio_float = audio_float - np.mean(audio_float)
-        
-        # Normalisiere auf -1.0 bis 1.0
-        max_val = np.max(np.abs(audio_float))
-        if max_val > 0:
-            audio_float = audio_float / (max_val * 1.1)
-        
-        # Konvertiere zurück zu int16
-        audio_normalized = (audio_float * 32767.0).astype(np.int16)
-        return audio_normalized
+        rms = float(np.sqrt(np.mean(audio_float ** 2)))
+        if rms < 1e-6:
+            return audio
+        target_rms = 10 ** (-18.0 / 20.0)
+        max_gain = 10 ** (15.0 / 20.0)
+        gain = min(target_rms / rms, max_gain)
+        audio_float = np.clip(audio_float * gain, -1.0, 1.0)
+        return (audio_float * 32767.0).astype(np.int16)
     
     def _detect_speech(self, audio: np.ndarray, threshold: float = 0.01) -> bool:
         """Voice Activity Detection (VAD)."""
@@ -342,9 +342,18 @@ class SmartMultiLanguageVoskRecognition:
                     speech_frames += 1
             except Exception:
                 continue
+        if total_frames == 0:
+            return False
+        ratio = speech_frames / total_frames
+        threshold = getattr(self, "vad_speech_ratio", 0.2)
+        if self._speech_active:
+            threshold = max(0.05, threshold * self.vad_hangover_factor)
         if self.debug_logs:
-            self._debug(f"vad: webrtcvad frames={total_frames} speech={speech_frames}")
-        return speech_frames > 0
+            self._debug(
+                f"vad: webrtcvad frames={total_frames} speech={speech_frames} "
+                f"ratio={ratio:.2f} th={threshold:.2f}"
+            )
+        return ratio >= threshold
     
     def _merge_texts(self, text_de: str, text_en: str) -> str:
         """
@@ -403,8 +412,8 @@ class SmartMultiLanguageVoskRecognition:
         from difflib import SequenceMatcher
         return SequenceMatcher(None, word1.lower(), word2.lower()).ratio()
     
-    def _record_chunk(self) -> np.ndarray:
-        """Nimmt einen Audio-Chunk auf."""
+    def _record_chunk(self) -> tuple[np.ndarray, np.ndarray]:
+        """Nimmt einen Audio-Chunk auf; returns (raw, processed)."""
         frames_to_record = int(self.samplerate * self.chunk_duration)
         
         recording = record_audio_chunk(
@@ -414,11 +423,12 @@ class SmartMultiLanguageVoskRecognition:
             channels=1,
             dtype="int16",
         )
-        
+        raw = recording.flatten().astype(np.int16, copy=False)
         if self.enable_audio_processing:
-            recording = self._normalize_audio(recording)
-        
-        return recording.flatten()
+            processed = self._normalize_audio(raw)
+        else:
+            processed = raw
+        return raw, processed
     
     def _update_display(self, text: str) -> None:
         """Aktualisiere OLED-Display."""
@@ -701,16 +711,16 @@ class SmartMultiLanguageVoskRecognition:
                 return
             # Audio aufnehmen
             self._debug("record_chunk: start")
-            audio_data = self._record_chunk()
-            chunk_audio = audio_data
+            raw_audio, audio_data = self._record_chunk()
+            chunk_audio = raw_audio
             self._debug(f"record_chunk: done len={len(audio_data)}")
             
             if not self.is_running:
                 return
             
-            # Voice Activity Detection
+            # Voice Activity Detection on raw audio (never after AGC)
             speech_was_active = self._speech_active
-            if not self._detect_speech(audio_data, threshold=0.005):
+            if not self._detect_speech(raw_audio, threshold=0.005):
                 if self.pause_duration:
                     self._silence_sec += self.chunk_duration
                     if self._speech_active and self._silence_sec >= self.pause_duration:
@@ -1013,6 +1023,7 @@ def run_smart_multilang_recognition(
         vad_preroll_sec=settings.vad_preroll_sec,
         vad_use_webrtcvad=settings.vad_use_webrtcvad,
         vad_webrtcvad_mode=settings.vad_webrtcvad_mode,
+        vad_speech_ratio=getattr(settings, "vad_speech_ratio", 0.2),
         vad_webrtcvad_frame_ms=settings.vad_webrtcvad_frame_ms,
         wake_phrases=tuple(settings.wake_phrases),
         context_phrases=tuple(settings.context_phrases),

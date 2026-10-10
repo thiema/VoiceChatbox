@@ -2,18 +2,25 @@ from __future__ import annotations
 import io
 import wave
 import json
+import queue
 import re
 import time
 import threading
+from collections import deque
 import numpy as np
 import sounddevice as sd
 from typing import Callable, Optional
 from pathlib import Path
 
+try:
+    from scipy.signal import resample_poly
+except ImportError:  # pragma: no cover
+    resample_poly = None  # type: ignore
+
 from .audio_io import (
     _resolve_device_id,
     select_input_device,
-    wait_for_playback_end,
+    is_playback_active,
     play_beep_sequence,
     play_hangup_tone,
     stop_playback,
@@ -138,54 +145,79 @@ class VoskSpeechRecognition:
             print(f"Fehler bei Vosk-Transkription: {e}")
             return ""
     
+    def create_stream_recognizer(self):
+        """Create a KaldiRecognizer for one utterance (caller owns lifetime)."""
+        from vosk import KaldiRecognizer
+
+        rec = KaldiRecognizer(self.recognizer, self.samplerate)
+        rec.SetWords(False)
+        return rec
+
+    def feed_stream(self, rec, audio_data: np.ndarray) -> tuple[Optional[str], Optional[str]]:
+        """
+        Feed int16 mono 16 kHz audio into an open recognizer.
+
+        Returns:
+            (accepted_text, partial_text) — accepted_text when AcceptWaveform
+            returns True; partial_text from PartialResult otherwise (may be None).
+        """
+        if audio_data is None or audio_data.size == 0:
+            return None, None
+        if audio_data.dtype != np.int16:
+            audio_data = audio_data.astype(np.int16)
+        audio_bytes = audio_data.tobytes()
+        # ~0.25 s slices (4000 frames * 2 bytes)
+        chunk_size = 4000 * 2
+        accepted_parts: list[str] = []
+        partial: Optional[str] = None
+        try:
+            for i in range(0, len(audio_bytes), chunk_size):
+                chunk = audio_bytes[i : i + chunk_size]
+                if not chunk:
+                    break
+                if rec.AcceptWaveform(chunk):
+                    result = json.loads(rec.Result())
+                    if result.get("text"):
+                        accepted_parts.append(result["text"])
+                    partial = None
+                else:
+                    try:
+                        partial_result = json.loads(rec.PartialResult())
+                        partial = (partial_result.get("partial") or "").strip() or None
+                    except Exception:
+                        pass
+        except Exception as e:
+            print(f"Fehler bei Vosk feed_stream: {e}")
+            return None, None
+        accepted = re.sub(r"\s+", " ", " ".join(accepted_parts)).strip() or None
+        return accepted, partial
+
+    def finalize_stream(self, rec) -> str:
+        """Flush recognizer and return remaining text."""
+        try:
+            final_result = json.loads(rec.FinalResult())
+            text = (final_result.get("text") or "").strip()
+            return re.sub(r"\s+", " ", text)
+        except Exception as e:
+            print(f"Fehler bei Vosk finalize_stream: {e}")
+            return ""
+
     def transcribe_audio_stream(self, audio_data: np.ndarray) -> str:
         """
-        Transkribiere Audio-Daten direkt aus numpy-Array.
-        
+        Transkribiere Audio-Daten direkt aus numpy-Array (eine Äußerung).
+
         Args:
             audio_data: numpy-Array mit Audio-Daten (int16, mono, 16kHz)
-            
+
         Returns:
             Erkannten Text
         """
         try:
-            from vosk import KaldiRecognizer
-            
-            # Erstelle Recognizer mit optimierten Einstellungen
-            rec = KaldiRecognizer(self.recognizer, self.samplerate)
-            rec.SetWords(False)  # Nur Text, keine Wort-Timestamps
-            
-            # Alternative: SetWords(True) für mehr Kontext, aber langsamer
-            # rec.SetWords(True)
-            
-            # Konvertiere zu bytes
-            audio_bytes = audio_data.tobytes()
-            
-            # Verarbeite in kleineren Chunks für bessere Erkennung
-            # Kleinere Chunks = häufigeres Processing = bessere Ergebnisse
-            chunk_size = 4000 * 2  # 4000 Frames * 2 bytes (int16) = ~0.5 Sekunden
-            text_parts = []
-            
-            for i in range(0, len(audio_bytes), chunk_size):
-                chunk = audio_bytes[i:i + chunk_size]
-                if len(chunk) == 0:
-                    break
-                    
-                if rec.AcceptWaveform(chunk):
-                    result = json.loads(rec.Result())
-                    if result.get("text"):
-                        text_parts.append(result["text"])
-            
-            # Finale Erkennung (wichtig für letzten Teil)
-            final_result = json.loads(rec.FinalResult())
-            if final_result.get("text"):
-                text_parts.append(final_result["text"])
-            
-            result_text = " ".join(text_parts).strip()
-            # Stelle sicher, dass Leerzeichen zwischen Wörtern vorhanden sind
-            # Normalisiere mehrfache Leerzeichen zu einem
-            result_text = re.sub(r'\s+', ' ', result_text)
-            return result_text
+            rec = self.create_stream_recognizer()
+            accepted, _partial = self.feed_stream(rec, audio_data)
+            final = self.finalize_stream(rec)
+            parts = [p for p in (accepted, final) if p]
+            return re.sub(r"\s+", " ", " ".join(parts)).strip()
         except Exception as e:
             print(f"Fehler bei Vosk-Stream-Transkription: {e}")
             return ""
@@ -219,19 +251,20 @@ class LiveVoskRecognition:
                  vad_noise_multiplier: float = 3.0,
                  vad_noise_alpha: float = 0.1,
                  vad_hangover_factor: float = 0.6,
-                 vad_preroll_sec: float = 0.2,
+                 vad_preroll_sec: float = 0.30,
                  ready_hold_sec: float = 10.0,
                  vad_use_webrtcvad: bool = True,
-                 vad_webrtcvad_mode: int = 2,
-                 vad_webrtcvad_frame_ms: int = 30):
+                 vad_webrtcvad_mode: int = 1,
+                 vad_webrtcvad_frame_ms: int = 30,
+                 vad_speech_ratio: float = 0.2):
         """
         Initialisiere Live-Vosk-Spracherkennung.
         
         Args:
             model_path: Pfad zum Vosk-Modell
             device: Audio-Eingabegerät
-            chunk_duration: Dauer pro Chunk in Sekunden (länger = besser, aber langsamer)
-            enable_audio_processing: Audio-Vorverarbeitung aktivieren (Normalisierung, etc.)
+            chunk_duration: Legacy; live path uses 30 ms VAD frames (kept for API compat)
+            enable_audio_processing: HPF + RMS-AGC aktivieren
             enable_semantic: Semantische Satzerkennung aktivieren
             language: Sprache für semantische Analyse
         """
@@ -239,7 +272,7 @@ class LiveVoskRecognition:
         self.audio_output_device = audio_output_device
         self.vosk = VoskSpeechRecognition(model_path, device, debug=debug_logs)
         self.samplerate = 16000
-        self.chunk_duration = chunk_duration  # Längere Chunks = besserer Kontext
+        self.chunk_duration = chunk_duration  # legacy; streaming uses frame_ms blocks
         self.enable_audio_processing = enable_audio_processing
         self.is_running = False
         self.current_text = ""
@@ -288,10 +321,12 @@ class LiveVoskRecognition:
         self.vad_hangover_factor = max(0.1, min(vad_hangover_factor, 1.0))
         self.vad_preroll_sec = max(0.0, vad_preroll_sec)
         self._preroll_samples = int(self.samplerate * self.vad_preroll_sec)
-        self._preroll_tail = np.zeros(0, dtype=np.int16)
+        self._preroll_buf: deque[np.ndarray] = deque()
+        self._preroll_len = 0
         self.vad_use_webrtcvad = vad_use_webrtcvad
         self.vad_webrtcvad_mode = max(0, min(int(vad_webrtcvad_mode), 3))
         self.vad_webrtcvad_frame_ms = 30 if int(vad_webrtcvad_frame_ms) not in (10, 20, 30) else int(vad_webrtcvad_frame_ms)
+        self.vad_speech_ratio = max(0.05, min(float(vad_speech_ratio), 0.9))
         self._webrtcvad = None
         if self.vad_use_webrtcvad:
             try:
@@ -302,28 +337,36 @@ class LiveVoskRecognition:
                     self._debug(f"webrtcvad: unavailable ({e})")
                 self._webrtcvad = None
         self._noise_floor = 0.0
+        # Continuous capture / utterance streaming state
+        self._audio_q: queue.Queue | None = None
+        self._capture_sr = self.samplerate
+        self._input_stream = None
+        self._utt_rec = None
+        self._utt_accepted: list[str] = []
+        self._utt_samples = 0
+        self._min_utt_sec = 0.35
+        self._agc_target_rms = 10 ** (-18.0 / 20.0)  # -18 dBFS
+        self._agc_max_gain = 10 ** (15.0 / 20.0)  # +15 dB cap
+        self._last_partial = ""
     
     def set_text_callback(self, callback: Callable[[str], None]) -> None:
         """Setze Callback-Funktion, die bei neuem Text aufgerufen wird."""
         self.text_callback = callback
     
     def _normalize_audio(self, audio: np.ndarray) -> np.ndarray:
-        """Normalisiere Audio für bessere Erkennung."""
-        # Konvertiere zu float32 für Verarbeitung
+        """RMS-Ziel-AGC mit Gain-Cap (kein Peak-Normalize)."""
+        if audio.size == 0:
+            return audio
         audio_float = audio.astype(np.float32) / 32768.0
-        
-        # Entferne DC-Offset
         audio_float = audio_float - np.mean(audio_float)
-        
-        # Normalisiere auf -1.0 bis 1.0 (verhindert Clipping)
-        max_val = np.max(np.abs(audio_float))
-        if max_val > 0:
-            # Leichte Normalisierung (nicht zu aggressiv, sonst Verzerrung)
-            audio_float = audio_float / (max_val * 1.1)  # 10% Headroom
-        
-        # Konvertiere zurück zu int16
-        audio_normalized = (audio_float * 32767.0).astype(np.int16)
-        return audio_normalized
+        rms = float(np.sqrt(np.mean(audio_float ** 2)))
+        if rms < 1e-6:
+            return audio
+        gain = min(self._agc_target_rms / rms, self._agc_max_gain)
+        audio_float = np.clip(audio_float * gain, -1.0, 1.0)
+        if self.debug_logs and gain > 1.01:
+            self._debug(f"agc: rms={rms:.6f} gain={gain:.2f}x")
+        return (audio_float * 32767.0).astype(np.int16)
     
     def _apply_highpass_filter(self, audio: np.ndarray, cutoff: float = 80.0) -> np.ndarray:
         """Einfacher High-Pass Filter um tiefe Frequenzen zu entfernen."""
@@ -384,9 +427,18 @@ class LiveVoskRecognition:
                     speech_frames += 1
             except Exception:
                 continue
+        if total_frames == 0:
+            return False
+        ratio = speech_frames / total_frames
+        threshold = self.vad_speech_ratio
+        if self._speech_active:
+            threshold = max(0.05, threshold * self.vad_hangover_factor)
         if self.debug_logs:
-            self._debug(f"vad: webrtcvad frames={total_frames} speech={speech_frames}")
-        return speech_frames > 0
+            self._debug(
+                f"vad: webrtcvad frames={total_frames} speech={speech_frames} "
+                f"ratio={ratio:.2f} th={threshold:.2f} active={self._speech_active}"
+            )
+        return ratio >= threshold
     
     def _record_chunk(self) -> tuple[np.ndarray, np.ndarray]:
         """Nimmt einen Audio-Chunk auf und gibt (raw, processed) zurück."""
@@ -694,231 +746,335 @@ class LiveVoskRecognition:
             print("[DEBUG] cmd: no match")
         return None
     
-    def _process_chunk(self) -> None:
-        """Nimmt einen Chunk auf, transkribiert ihn und aktualisiert das Display."""
-        chunk_audio = None
-        preroll_tail = self._preroll_tail
-        try:
-            # Während Ausgabe nichts aufnehmen
-            wait_for_playback_end()
-            if self._awaiting_confirm and self._confirm_deadline and time.time() > self._confirm_deadline:
-                self._cancel_confirmation()
+    def _handle_recognized_text(self, text: str) -> None:
+        """Process a finalized utterance transcript (wake/chat/OLED)."""
+        text = re.sub(r"\s+", " ", (text or "")).strip()
+        if not text:
+            return
+        self._last_activity_ts = time.time()
+
+        now = time.time()
+        if now < self._ignore_until:
+            if self.chat_filter_debug:
+                print("ChatGPT-Filter: blockiert (nach TTS)")
+            return
+        norm_text = self._normalize_command_text(text)
+        if self._last_tts_text and norm_text:
+            if norm_text in self._last_tts_text or self._last_tts_text in norm_text:
+                if self.chat_filter_debug:
+                    print("ChatGPT-Filter: blockiert (Echo von TTS)")
                 return
-            # Audio aufnehmen
-            self._debug("record_chunk: start")
-            raw_audio, audio_data = self._record_chunk()
-            chunk_audio = audio_data
-            self._debug(f"record_chunk: done len={len(audio_data)}")
-            
-            if not self.is_running:
+
+        if self._awaiting_confirm:
+            if self._handle_confirmation(text):
                 return
-            
-            # Voice Activity Detection - überspringe leise Chunks
-            speech_was_active = self._speech_active
-            if not self._detect_speech(raw_audio, threshold=0.005):
-                if self.pause_duration:
-                    self._silence_sec += self.chunk_duration
-                    if self._speech_active and self._silence_sec >= self.pause_duration:
-                        self._finalize_current_text()
-                self._debug("vad: no speech")
-                return
+
+        if self._handle_history_command(text):
+            return
+        cmd = self._check_commands(text)
+        if cmd == "stop":
+            stop_playback()
+            self._set_listening(False, "STOPP erkannt", context_mode=False)
+            self._debug("command: stop")
+            return
+        if cmd == "wake":
+            self._set_listening(True, "OK GOOGLE erkannt", context_mode=False)
+            self._debug("command: wake")
+            return
+        if cmd == "wake_context":
+            self._set_listening(True, "OK GOOGLE WEITER erkannt", context_mode=True)
+            self._debug("command: wake_context")
+            return
+
+        if not self.listening_active:
+            self._set_listening(False, "Warte auf Wake")
+            self._debug("listening inactive: skip")
+            return
+
+        if self._pending_prefix:
+            text = f"{self._pending_prefix} {text}".strip()
+            self._pending_prefix = ""
+
+        if self.current_text and text.lower() in self.current_text.lower():
+            return
+
+        if self.semantic_processor:
+            temp_text = self.current_text + " " + text if self.current_text else text
+            result = self.semantic_processor.process_text(temp_text)
+            corrected_text = result.get("corrected_text", temp_text)
+            self.current_text = corrected_text
+
+            corrections = result.get("corrections", [])
+            if corrections:
+                print(f"🔧 {len(corrections)} Korrektur(en) angewendet")
+
+            context = result.get("context")
+            if context and context.domain:
+                print(f"📋 Kontext: {context.domain} (Themen: {', '.join(context.topics)})")
+
+            for info in result["semantic_info"]:
+                sentence = info["sentence"]
+                analysis = info["analysis"]
+                sentence_type = info["type"]
+                type_emoji = {
+                    "question": "❓",
+                    "imperative": "❗",
+                    "exclamation": "❗",
+                    "statement": "💬",
+                }
+                emoji = type_emoji.get(sentence_type, "💬")
+                print(f"{emoji} [{sentence_type.upper()}] {sentence.text}")
+                if analysis["sentiment"] != "neutral":
+                    print(f"   Sentiment: {analysis['sentiment']}")
+
+            display_text = self.semantic_processor.get_display_text(max_sentences=2)
+            if display_text:
+                self._update_display(display_text)
             else:
-                if self.pause_duration:
-                    self._speech_active = True
-                    self._silence_sec = 0.0
-                if not speech_was_active and self._preroll_samples > 0 and preroll_tail.size:
-                    audio_data = np.concatenate([preroll_tail, audio_data])
-                    if self.debug_logs:
-                        self._debug(f"vad: preroll {len(preroll_tail)} samples prepended")
-            
-            # Transkribieren (direkt mit numpy-Array)
-            self._debug("transcribe: start")
-            text = self.vosk.transcribe_audio_stream(audio_data)
-            self._debug(f"transcribe: done text='{text}'")
-            
-            if text:
-                self._last_activity_ts = time.time()
-                # Stelle sicher, dass Text Leerzeichen hat
-                text = re.sub(r'\s+', ' ', text).strip()
+                self._update_display(self.current_text)
 
-                now = time.time()
-                if now < self._ignore_until:
-                    if self.chat_filter_debug:
-                        print("ChatGPT-Filter: blockiert (nach TTS)")
-                    return
-                norm_text = self._normalize_command_text(text)
-                if self._last_tts_text and norm_text:
-                    if norm_text in self._last_tts_text or self._last_tts_text in norm_text:
-                        if self.chat_filter_debug:
-                            print("ChatGPT-Filter: blockiert (Echo von TTS)")
-                        return
-
-                if self._awaiting_confirm:
-                    if self._handle_confirmation(text):
-                        return
-
-                if self._handle_history_command(text):
-                    return
-                cmd = self._check_commands(text)
-                if cmd == "stop":
-                    stop_playback()
-                    self._set_listening(False, "STOPP erkannt", context_mode=False)
-                    self._debug("command: stop")
-                    return
-                if cmd == "wake":
-                    self._set_listening(True, "OK GOOGLE erkannt", context_mode=False)
-                    self._debug("command: wake")
-                    return
-                if cmd == "wake_context":
-                    self._set_listening(True, "OK GOOGLE WEITER erkannt", context_mode=True)
-                    self._debug("command: wake_context")
-                    return
-
-                if not self.listening_active:
-                    self._set_listening(False, "Warte auf Wake")
-                    self._debug("listening inactive: skip")
-                    return
-
-                if self._pending_prefix:
-                    text = f"{self._pending_prefix} {text}".strip()
-                    self._pending_prefix = ""
-                
-                # Prüfe, ob Text bereits vorhanden ist (verhindert Doppel-Ausgabe)
-                if self.current_text and text.lower() in self.current_text.lower():
-                    # Überspringe, wenn bereits vorhanden
-                    return
-                
-                # Semantische Satzerkennung mit kontext-basierter Korrektur
-                if self.semantic_processor:
-                    # Text temporär hinzufügen für Verarbeitung
-                    temp_text = self.current_text + " " + text if self.current_text else text
-                    result = self.semantic_processor.process_text(temp_text)
-                    
-                    # Verwende korrigierten Text
-                    corrected_text = result.get('corrected_text', temp_text)
-                    self.current_text = corrected_text
-                    
-                    # Zeige Korrekturen an
-                    corrections = result.get('corrections', [])
-                    if corrections:
-                        print(f"🔧 {len(corrections)} Korrektur(en) angewendet")
-                    
-                    # Zeige Kontext-Info
-                    context = result.get('context')
-                    if context and context.domain:
-                        print(f"📋 Kontext: {context.domain} (Themen: {', '.join(context.topics)})")
-                    
-                    # Zeige neue Sätze mit semantischer Info
-                    for info in result['semantic_info']:
-                        sentence = info['sentence']
-                        analysis = info['analysis']
-                        sentence_type = info['type']
-                        
-                        type_emoji = {
-                            'question': '❓',
-                            'imperative': '❗',
-                            'exclamation': '❗',
-                            'statement': '💬'
-                        }
-                        emoji = type_emoji.get(sentence_type, '💬')
-                        
-                        print(f"{emoji} [{sentence_type.upper()}] {sentence.text}")
-                        if analysis['sentiment'] != 'neutral':
-                            print(f"   Sentiment: {analysis['sentiment']}")
-                    
-                    # Verwende satz-basierte Anzeige für Display
-                    display_text = self.semantic_processor.get_display_text(max_sentences=2)
-                    if display_text:
-                        self._update_display(display_text)
-                    else:
-                        self._update_display(self.current_text)
-
-                    # Neue vollständige Sätze an ChatGPT senden
-                    if self.chat_assistant and not self.pause_duration:
-                        sent_any = False
-                        for sentence in result.get("new_sentences", []):
-                            if sentence and sentence.text:
-                                allowed, reason = chatgpt_filter_decision(
-                                    sentence.text, self.min_chat_words, self.trivial_words
+            # With utterance EOS, send current text when pause_duration is used
+            if self.chat_assistant and not self.pause_duration:
+                sent_any = False
+                for sentence in result.get("new_sentences", []):
+                    if sentence and sentence.text:
+                        allowed, reason = chatgpt_filter_decision(
+                            sentence.text, self.min_chat_words, self.trivial_words
+                        )
+                        if allowed:
+                            if self.debug_logs:
+                                print(
+                                    f"[DEBUG] prompt=NEW"
+                                    if not self.context_mode
+                                    else "[DEBUG] prompt=KONTEXT"
                                 )
-                                if allowed:
-                                    if self.debug_logs:
-                                        print(f"[DEBUG] prompt=NEW" if not self.context_mode else "[DEBUG] prompt=KONTEXT")
-                                    if self.confirm_before_chat and self._request_confirmation(
-                                        sentence.text, self._current_prompt()
-                                    ):
-                                        pass
-                                    else:
-                                        self.chat_assistant.handle_text(
-                                            sentence.text,
-                                            system_prompt_override=self._current_prompt(),
-                                        )
-                                        sent_any = True
-                                else:
-                                    self._pending_prefix = sentence.text
-                                    self._announce_chat_filter_block(reason)
-                                    if self.chat_filter_debug:
-                                        print(f"ChatGPT-Filter: '{sentence.text}' → blockiert ({reason})")
-                        if sent_any:
+                            if self.confirm_before_chat and self._request_confirmation(
+                                sentence.text, self._current_prompt()
+                            ):
+                                pass
+                            else:
+                                self.chat_assistant.handle_text(
+                                    sentence.text,
+                                    system_prompt_override=self._current_prompt(),
+                                )
+                                sent_any = True
+                        else:
+                            self._pending_prefix = sentence.text
+                            self._announce_chat_filter_block(reason)
+                            if self.chat_filter_debug:
+                                print(f"ChatGPT-Filter: '{sentence.text}' → blockiert ({reason})")
+                if sent_any:
+                    self.current_text = ""
+                    self._pending_prefix = ""
+                    if self.semantic_processor:
+                        self.semantic_processor.reset()
+            elif self.chat_assistant and self.pause_duration:
+                # Finalize via pause path using accumulated current_text
+                self._silence_sec = self.pause_duration
+                self._finalize_current_text()
+        else:
+            if self.current_text:
+                self.current_text += " " + text
+            else:
+                self.current_text = text
+            self._update_display(self.current_text)
+
+            if self.chat_assistant and not self.pause_duration:
+                if self._last_chat_text != text:
+                    allowed, reason = chatgpt_filter_decision(
+                        text, self.min_chat_words, self.trivial_words
+                    )
+                    if allowed:
+                        self._last_chat_text = text
+                        if self.debug_logs:
+                            print(
+                                f"[DEBUG] prompt=NEW"
+                                if not self.context_mode
+                                else "[DEBUG] prompt=KONTEXT"
+                            )
+                        if self.confirm_before_chat and self._request_confirmation(
+                            text, self._current_prompt()
+                        ):
+                            pass
+                        else:
+                            self.chat_assistant.handle_text(
+                                text,
+                                system_prompt_override=self._current_prompt(),
+                            )
                             self.current_text = ""
                             self._pending_prefix = ""
-                            if self.semantic_processor:
-                                self.semantic_processor.reset()
-                else:
-                    # Standard: Einfache Text-Anzeige (ohne Korrektur)
-                    if self.current_text:
-                        self.current_text += " " + text
                     else:
-                        self.current_text = text
-                    self._update_display(self.current_text)
+                        self._pending_prefix = text
+                        self._announce_chat_filter_block(reason)
+                        if self.chat_filter_debug:
+                            print(f"ChatGPT-Filter: '{text}' → blockiert ({reason})")
+            elif self.chat_assistant and self.pause_duration:
+                self._silence_sec = self.pause_duration
+                self._finalize_current_text()
 
-                    # Fallback: gesamten Text senden (ohne Semantik)
-                    if self.chat_assistant and not self.pause_duration:
-                        if self._last_chat_text != text:
-                            allowed, reason = chatgpt_filter_decision(
-                                text, self.min_chat_words, self.trivial_words
-                            )
-                            if allowed:
-                                self._last_chat_text = text
-                                if self.debug_logs:
-                                    print(f"[DEBUG] prompt=NEW" if not self.context_mode else "[DEBUG] prompt=KONTEXT")
-                                if self.confirm_before_chat and self._request_confirmation(
-                                    text, self._current_prompt()
-                                ):
-                                    pass
-                                else:
-                                    self.chat_assistant.handle_text(
-                                        text,
-                                        system_prompt_override=self._current_prompt(),
-                                    )
-                                    self.current_text = ""
-                                    self._pending_prefix = ""
-                            else:
-                                self._pending_prefix = text
-                                self._announce_chat_filter_block(reason)
-                                if self.chat_filter_debug:
-                                    print(f"ChatGPT-Filter: '{text}' → blockiert ({reason})")
-                
-                # Callback aufrufen
-                if self.text_callback:
-                    self.text_callback(self.current_text)
-                
-                print(f"Erkannt: {text}")
-                print(f"Gesamt: {self.current_text}")
-            else:
-                # Kein Text erkannt - könnte auf schlechte Audio-Qualität hindeuten
+        if self.text_callback:
+            self.text_callback(self.current_text)
+
+        print(f"Erkannt: {text}")
+        print(f"Gesamt: {self.current_text}")
+
+    def _resolve_capture_samplerate(self) -> int:
+        """Prefer 16 kHz; fall back to device default (resample later)."""
+        device_id = self.vosk.device_id
+        for sr in (self.samplerate, 48000, 44100):
+            try:
+                sd.check_input_settings(
+                    device=device_id, samplerate=sr, channels=1, dtype="int16"
+                )
+                return sr
+            except Exception:
+                continue
+        try:
+            info = sd.query_devices(device_id, "input")
+            return int(info.get("default_samplerate") or self.samplerate)
+        except Exception:
+            return self.samplerate
+
+    def _audio_callback(self, indata, frames, time_info, status) -> None:  # noqa: ARG002
+        if status and self.debug_logs:
+            self._debug(f"stream status: {status}")
+        if self._audio_q is None:
+            return
+        try:
+            mono = indata[:, 0].copy() if indata.ndim > 1 else indata.copy()
+            self._audio_q.put_nowait(mono)
+        except queue.Full:
+            try:
+                self._audio_q.get_nowait()
+            except queue.Empty:
                 pass
-        except Exception as e:
-            print(f"Fehler bei Verarbeitung: {e}")
-        finally:
-            if chunk_audio is not None and self._preroll_samples > 0:
-                if chunk_audio.size > self._preroll_samples:
-                    self._preroll_tail = chunk_audio[-self._preroll_samples:].copy()
-                else:
-                    self._preroll_tail = chunk_audio.copy()
-    
+            try:
+                mono = indata[:, 0].copy() if indata.ndim > 1 else indata.copy()
+                self._audio_q.put_nowait(mono)
+            except queue.Full:
+                pass
+
+    def _to_asr_rate(self, audio: np.ndarray) -> np.ndarray:
+        if self._capture_sr == self.samplerate or audio.size == 0:
+            return audio.astype(np.int16, copy=False)
+        if resample_poly is None:
+            # Nearest-neighbor fallback
+            ratio = self.samplerate / float(self._capture_sr)
+            idx = (np.arange(int(len(audio) * ratio)) / ratio).astype(np.int64)
+            idx = np.clip(idx, 0, len(audio) - 1)
+            return audio[idx].astype(np.int16)
+        return resample_poly(audio, self.samplerate, self._capture_sr).astype(np.int16)
+
+    def _push_preroll(self, frame: np.ndarray) -> None:
+        if self._preroll_samples <= 0:
+            return
+        self._preroll_buf.append(frame.copy())
+        self._preroll_len += len(frame)
+        while self._preroll_len > self._preroll_samples and self._preroll_buf:
+            old = self._preroll_buf.popleft()
+            self._preroll_len -= len(old)
+            if self._preroll_len < self._preroll_samples and old.size:
+                # keep tail if we overshot
+                need = self._preroll_samples - self._preroll_len
+                if need > 0 and need < len(old):
+                    keep = old[-need:]
+                    self._preroll_buf.appendleft(keep)
+                    self._preroll_len += len(keep)
+
+    def _preroll_concat(self) -> np.ndarray:
+        if not self._preroll_buf:
+            return np.zeros(0, dtype=np.int16)
+        return np.concatenate(list(self._preroll_buf))
+
+    def _begin_utterance(self, first_frame: np.ndarray) -> None:
+        self._utt_rec = self.vosk.create_stream_recognizer()
+        self._utt_accepted = []
+        self._utt_samples = 0
+        self._silence_sec = 0.0
+        self._speech_active = True
+        self._last_partial = ""
+        preroll = self._preroll_concat()
+        if preroll.size:
+            self._feed_utt(preroll)
+            self._debug(f"vad: preroll {len(preroll)} samples")
+        self._feed_utt(first_frame)
+
+    def _feed_utt(self, frame: np.ndarray) -> None:
+        if self._utt_rec is None or frame.size == 0:
+            return
+        audio = frame
+        if self.enable_audio_processing:
+            audio = self._apply_highpass_filter(audio, cutoff=80.0)
+            audio = self._normalize_audio(audio)
+        accepted, partial = self.vosk.feed_stream(self._utt_rec, audio)
+        self._utt_samples += len(frame)
+        if accepted:
+            self._utt_accepted.append(accepted)
+        if partial and partial != self._last_partial:
+            self._last_partial = partial
+            display = " ".join(self._utt_accepted + [partial]).strip()
+            if display:
+                self._update_display(display)
+
+    def _end_utterance(self) -> None:
+        if self._utt_rec is None:
+            self._speech_active = False
+            self._silence_sec = 0.0
+            return
+        final = self.vosk.finalize_stream(self._utt_rec)
+        parts = [p for p in (self._utt_accepted + ([final] if final else [])) if p]
+        text = re.sub(r"\s+", " ", " ".join(parts)).strip()
+        utt_sec = self._utt_samples / float(self.samplerate)
+        self._debug(f"utt: end sec={utt_sec:.2f} text='{text}'")
+        self._utt_rec = None
+        self._utt_accepted = []
+        self._utt_samples = 0
+        self._speech_active = False
+        self._silence_sec = 0.0
+        self._last_partial = ""
+        if utt_sec < self._min_utt_sec:
+            self._debug("utt: skipped (too short)")
+            return
+        if text:
+            self._handle_recognized_text(text)
+
+    def _drain_audio_queue(self) -> None:
+        if self._audio_q is None:
+            return
+        while True:
+            try:
+                self._audio_q.get_nowait()
+            except queue.Empty:
+                break
+
+    def _process_frame(self, raw_frame: np.ndarray) -> None:
+        """VAD + one KaldiRecognizer per utterance on continuous frames."""
+        if self._awaiting_confirm and self._confirm_deadline and time.time() > self._confirm_deadline:
+            self._cancel_confirmation()
+
+        frame_sec = len(raw_frame) / float(self.samplerate)
+        is_speech = self._detect_speech(raw_frame, threshold=0.005)
+
+        if not is_speech:
+            self._push_preroll(raw_frame)
+            if self._speech_active and self._utt_rec is not None:
+                pause = self.pause_duration if self.pause_duration else 1.2
+                self._silence_sec += frame_sec
+                # Keep feeding trailing silence briefly so decoder can settle
+                self._feed_utt(raw_frame)
+                if self._silence_sec >= pause:
+                    self._end_utterance()
+            return
+
+        self._silence_sec = 0.0
+        if not self._speech_active or self._utt_rec is None:
+            self._begin_utterance(raw_frame)
+        else:
+            self._feed_utt(raw_frame)
+        self._push_preroll(raw_frame)
+
     def start(self, oled: Optional[OledDisplay] = None) -> None:
-        """Starte die Live-Spracherkennung."""
+        """Starte die Live-Spracherkennung (continuous InputStream)."""
         self.oled = oled
         self.is_running = True
         self.current_text = ""
@@ -927,39 +1083,98 @@ class LiveVoskRecognition:
         self._status_text = None
         self._last_activity_ts = time.time()
         self.context_mode = False
+        self._utt_rec = None
+        self._utt_accepted = []
+        self._utt_samples = 0
+        self._speech_active = False
+        self._silence_sec = 0.0
+        self._preroll_buf.clear()
+        self._preroll_len = 0
 
-        # Geräteauswahl anzeigen + Fallback
         self.vosk.device_id = select_input_device(self.vosk.device_spec, announce=True)
         self._log_input_device()
-        
+        self._capture_sr = self._resolve_capture_samplerate()
+        self._debug(f"capture_sr={self._capture_sr} asr_sr={self.samplerate}")
+
         if self.oled:
             self.oled.show_listening()
 
         self._set_listening(False, "Start")
         play_status_listening(device=self.audio_output_device)
-        # Signal: Vosk-Modell geladen und bereit für Spracheingabe
         try:
             play_beep_sequence(device=self.audio_output_device, announce=False)
         except Exception as e:
             print(f"Beep-Fehler: {e}")
-        
-        print("Live-Spracherkennung (Vosk, lokal) gestartet. Strg+C zum Beenden.")
+
+        print("Live-Spracherkennung (Vosk, lokal, streaming) gestartet. Strg+C zum Beenden.")
         print("Sprich jetzt...")
-        
+
+        blocksize = max(1, int(self._capture_sr * (self.vad_webrtcvad_frame_ms / 1000.0)))
+        self._audio_q = queue.Queue(maxsize=200)
         try:
-            # Kontinuierliche Verarbeitung
+            self._input_stream = sd.InputStream(
+                samplerate=self._capture_sr,
+                channels=1,
+                dtype="int16",
+                device=self.vosk.device_id,
+                blocksize=blocksize,
+                callback=self._audio_callback,
+            )
+            self._input_stream.start()
+        except Exception as e:
+            print(f"InputStream-Fehler ({e}); Fallback auf Chunk-Aufnahme.")
+            self._input_stream = None
+
+        try:
             while self.is_running:
                 if self.listening_active and self.auto_pause_after_sec > 0:
                     if self._force_ready_until and time.time() < self._force_ready_until:
                         pass
                     elif (time.time() - self._last_activity_ts) >= self.auto_pause_after_sec:
                         self._set_listening(False, "Inaktivität")
-                self._process_chunk()
+
+                # Discard mic audio while TTS/playback is active
+                if is_playback_active():
+                    self._drain_audio_queue()
+                    if self._utt_rec is not None:
+                        self._end_utterance()
+                    time.sleep(0.05)
+                    continue
+
+                if self._input_stream is None:
+                    # Fallback: short blocking record (still utterance-aware)
+                    frames = int(self.samplerate * (self.vad_webrtcvad_frame_ms / 1000.0))
+                    raw = record_audio_chunk(
+                        frames,
+                        samplerate=self.samplerate,
+                        device_id=self.vosk.device_id,
+                        channels=1,
+                        dtype="int16",
+                    )
+                    if len(raw.shape) > 1:
+                        raw = raw[:, 0]
+                    self._process_frame(raw.astype(np.int16))
+                    continue
+
+                try:
+                    block = self._audio_q.get(timeout=0.2)
+                except queue.Empty:
+                    continue
+                asr = self._to_asr_rate(np.asarray(block, dtype=np.int16))
+                # Split into ASR-rate VAD frames
+                frame_len = int(self.samplerate * (self.vad_webrtcvad_frame_ms / 1000.0))
+                if frame_len <= 0:
+                    continue
+                for i in range(0, len(asr) - frame_len + 1, frame_len):
+                    self._process_frame(asr[i : i + frame_len])
+                rem = len(asr) % frame_len
+                if rem:
+                    self._process_frame(asr[-rem:])
         except KeyboardInterrupt:
             print("\nBeendet.")
         finally:
             self.stop()
-    
+
     def stop(self) -> None:
         """Stoppe die Live-Spracherkennung."""
         self.is_running = False
@@ -967,6 +1182,19 @@ class LiveVoskRecognition:
         self._paused_notice = False
         self._status_text = None
         self.context_mode = False
+        if self._utt_rec is not None:
+            try:
+                self._end_utterance()
+            except Exception:
+                self._utt_rec = None
+        if self._input_stream is not None:
+            try:
+                self._input_stream.stop()
+                self._input_stream.close()
+            except Exception:
+                pass
+            self._input_stream = None
+        self._audio_q = None
         if self.oled:
             self.oled.clear()
         print("Spracherkennung gestoppt.")
@@ -1065,6 +1293,7 @@ def run_live_vosk_recognition(model_path: Optional[str] = None, enable_chatgpt: 
         vad_use_webrtcvad=settings.vad_use_webrtcvad,
         vad_webrtcvad_mode=settings.vad_webrtcvad_mode,
         vad_webrtcvad_frame_ms=settings.vad_webrtcvad_frame_ms,
+        vad_speech_ratio=settings.vad_speech_ratio,
         ready_hold_sec=settings.ready_hold_sec,
     )
 

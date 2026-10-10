@@ -56,6 +56,7 @@ class Settings:
     vad_use_webrtcvad: bool
     vad_webrtcvad_mode: int
     vad_webrtcvad_frame_ms: int
+    vad_speech_ratio: float
     announce_chat_request: bool
     confirm_before_chat: bool
     confirm_phrases: list[str]
@@ -102,16 +103,17 @@ def load_settings() -> Settings:
     vad_noise_multiplier = float(os.getenv("VAD_NOISE_MULTIPLIER", "3.0"))
     vad_noise_alpha = float(os.getenv("VAD_NOISE_ALPHA", "0.1"))
     vad_hangover_factor = float(os.getenv("VAD_HANGOVER_FACTOR", "0.6"))
-    vad_preroll_sec = float(os.getenv("VAD_PREROLL_SEC", "0.2"))
+    vad_preroll_sec = float(os.getenv("VAD_PREROLL_SEC", "0.30"))
     vad_use_webrtcvad = _get_bool("VAD_USE_WEBRTCVAD", True)
-    vad_webrtcvad_mode = int(os.getenv("VAD_WEBRTCVAD_MODE", "2"))
+    vad_webrtcvad_mode = int(os.getenv("VAD_WEBRTCVAD_MODE", "1"))
     vad_webrtcvad_frame_ms = int(os.getenv("VAD_WEBRTCVAD_FRAME_MS", "30"))
+    vad_speech_ratio = float(os.getenv("VAD_SPEECH_RATIO", "0.2"))
     announce_chat_request = _get_bool("ANNOUNCE_CHAT_REQUEST", True)
     confirm_before_chat = _get_bool("CONFIRM_BEFORE_CHAT", False)
     confirm_phrases = [p.strip().lower() for p in os.getenv("CONFIRM_PHRASES", "ok,okay,ja,yes").split(",") if p.strip()]
     reject_phrases = [p.strip().lower() for p in os.getenv("REJECT_PHRASES", "nein,no,falsch,abbruch").split(",") if p.strip()]
-    vosk_chunk_duration = float(os.getenv("VOSK_CHUNK_DURATION", "3.0"))
-    vosk_pause_duration = float(os.getenv("VOSK_PAUSE_DURATION", "0.9"))
+    vosk_chunk_duration = float(os.getenv("VOSK_CHUNK_DURATION", "3.0"))  # legacy (streaming uses VAD frames)
+    vosk_pause_duration = float(os.getenv("VOSK_PAUSE_DURATION", "1.2"))
     confirm_timeout_sec = float(os.getenv("CONFIRM_TIMEOUT_SEC", "6.0"))
     history_path = os.getenv("HISTORY_PATH", "data/tts_history/index.json")
     history_dir = os.getenv("HISTORY_DIR", "data/tts_history")
@@ -181,6 +183,7 @@ def load_settings() -> Settings:
         vad_use_webrtcvad=vad_use_webrtcvad,
         vad_webrtcvad_mode=vad_webrtcvad_mode,
         vad_webrtcvad_frame_ms=vad_webrtcvad_frame_ms,
+        vad_speech_ratio=vad_speech_ratio,
         announce_chat_request=announce_chat_request,
         confirm_before_chat=confirm_before_chat,
         confirm_phrases=confirm_phrases,
