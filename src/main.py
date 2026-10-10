@@ -168,6 +168,11 @@ def main():
         from .button_test import run_button_test
         run_button_test()
         return
+    if "--test-speaker" in sys.argv or "--test-lautsprecher" in sys.argv:
+        from .audio_test import run_speaker_test_from_settings
+        auto = "--auto" in sys.argv or "--yes" in sys.argv or not sys.stdin.isatty()
+        run_speaker_test_from_settings(auto=auto)
+        return
     if "--live-recognition" in sys.argv or "--live-stt" in sys.argv:
         # Prüfe, ob Push-to-Talk verwendet werden soll
         use_ptt = "--ptt" in sys.argv or os.getenv("USE_PTT", "").lower() in ("1", "true", "yes")
