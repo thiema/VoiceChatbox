@@ -145,11 +145,37 @@ class VoskSpeechRecognition:
             print(f"Fehler bei Vosk-Transkription: {e}")
             return ""
     
-    def create_stream_recognizer(self):
-        """Create a KaldiRecognizer for one utterance (caller owns lifetime)."""
+    def create_stream_recognizer(self, grammar: list[str] | None = None):
+        """Create a KaldiRecognizer for one utterance (caller owns lifetime).
+
+        If grammar is set (wake/stop phrases), Vosk is constrained to those
+        phrases + [unk] — much more robust for short commands.
+        """
         from vosk import KaldiRecognizer
 
-        rec = KaldiRecognizer(self.recognizer, self.samplerate)
+        if grammar:
+            phrases: list[str] = []
+            for g in grammar:
+                g = (g or "").strip()
+                if not g:
+                    continue
+                phrases.append(g)
+                compact = re.sub(r"\s+", "", g)
+                if compact and compact != g:
+                    phrases.append(compact)
+            # unique, keep order
+            seen: set[str] = set()
+            uniq: list[str] = []
+            for p in phrases:
+                key = p.lower()
+                if key in seen:
+                    continue
+                seen.add(key)
+                uniq.append(p)
+            uniq.append("[unk]")
+            rec = KaldiRecognizer(self.recognizer, self.samplerate, json.dumps(uniq))
+        else:
+            rec = KaldiRecognizer(self.recognizer, self.samplerate)
         rec.SetWords(False)
         return rec
 
@@ -362,6 +388,7 @@ class LiveVoskRecognition:
         self._last_partial = ""
         self._debug_last_ts: dict[str, float] = {}
         self._max_utt_sec = 8.0
+        self._max_utt_cmd_sec = 4.0  # shorter while waiting for wake/stop
         self._partial_interval_sec = 0.35
         self._last_partial_ts = 0.0
         self._overflow_count = 0
@@ -789,17 +816,80 @@ class LiveVoskRecognition:
         self._speech_active = False
         self._silence_sec = 0.0
 
+    def _phrase_match(self, norm_text: str, phrase: str, threshold: float = 0.74) -> bool:
+        """Exact / compact / fuzzy match for short voice commands."""
+        from difflib import SequenceMatcher
+
+        phrase = (phrase or "").strip().lower()
+        if not phrase or not norm_text:
+            return False
+        padded = f" {norm_text} "
+        if f" {phrase} " in padded:
+            return True
+        compact_text = norm_text.replace(" ", "")
+        compact_phrase = phrase.replace(" ", "")
+        if compact_phrase and compact_phrase in compact_text:
+            return True
+        if SequenceMatcher(None, norm_text, phrase).ratio() >= threshold:
+            return True
+        if compact_phrase and SequenceMatcher(None, compact_text, compact_phrase).ratio() >= 0.82:
+            return True
+
+        p_words = phrase.split()
+        t_words = norm_text.split()
+        if len(p_words) >= 2 and len(t_words) >= 1:
+            n = len(p_words)
+            if len(t_words) >= n:
+                for i in range(len(t_words) - n + 1):
+                    window = " ".join(t_words[i : i + n])
+                    if SequenceMatcher(None, window, phrase).ratio() >= threshold:
+                        return True
+                    if SequenceMatcher(None, window.replace(" ", ""), compact_phrase).ratio() >= 0.8:
+                        return True
+            # Each significant word must fuzzy-match some token
+            significant = [w for w in p_words if len(w) >= 3]
+            if significant:
+                matched = 0
+                for pw in significant:
+                    best = max(
+                        (SequenceMatcher(None, pw, tw).ratio() for tw in t_words),
+                        default=0.0,
+                    )
+                    if best >= 0.72 or pw in compact_text:
+                        matched += 1
+                if matched >= len(significant):
+                    return True
+        return False
+
     def _check_commands(self, text: str) -> str | None:
         norm = self._normalize_command_text(text)
-        padded = f" {norm} "
         if self.debug_logs and norm:
             print(f"[DEBUG] cmd: norm='{norm}'")
-            print(f"[DEBUG] cmd: wake={self.wake_phrases} context={self.context_phrases} stop={self.stop_phrases}")
-        if any(f" {phrase} " in padded for phrase in self.stop_phrases):
+            print(
+                f"[DEBUG] cmd: wake={self.wake_phrases} "
+                f"context={self.context_phrases} stop={self.stop_phrases}"
+            )
+        if any(self._phrase_match(norm, p) for p in self.stop_phrases):
             return "stop"
-        if any(f" {phrase} " in padded for phrase in self.context_phrases):
+        if any(self._phrase_match(norm, p) for p in self.context_phrases):
             return "wake_context"
-        if any(f" {phrase} " in padded for phrase in self.wake_phrases):
+        if any(self._phrase_match(norm, p) for p in self.wake_phrases):
+            return "wake"
+        # Common Vosk mishearings for "bereit machen" / wake
+        wake_aliases = (
+            "bereitmachen",
+            "bitte bereitmachen",
+            "eismacher",
+            "bitte eismacher",
+            "reizbar",
+            "überreicht machen",
+            "ueberreicht machen",
+            "vereinbar",
+            "bitte vereinbar",
+        )
+        if any(self._phrase_match(norm, p, threshold=0.70) for p in wake_aliases):
+            if self.debug_logs:
+                print("[DEBUG] cmd: wake via alias")
             return "wake"
         if self.debug_logs and norm:
             print("[DEBUG] cmd: no match")
@@ -1081,7 +1171,19 @@ class LiveVoskRecognition:
         return np.concatenate(list(self._preroll_buf))
 
     def _begin_utterance(self, first_frame: np.ndarray) -> None:
-        self._utt_rec = self.vosk.create_stream_recognizer()
+        # While waiting for wake/stop: constrain Vosk to command phrases
+        grammar = None
+        if not self.listening_active:
+            grammar = [
+                *self.wake_phrases,
+                *self.context_phrases,
+                *self.stop_phrases,
+                "bitte bereit machen",
+                "bereit machen",
+                "bereitmachen",
+            ]
+            self._debug(f"utt: command-grammar ({len(grammar)} phrases)")
+        self._utt_rec = self.vosk.create_stream_recognizer(grammar=grammar)
         self._utt_accepted = []
         self._utt_samples = 0
         self._silence_sec = 0.0
@@ -1170,9 +1272,10 @@ class LiveVoskRecognition:
                 # Feed trailing silence without heavy OLED partials
                 self._feed_utt(raw_frame)
                 utt_sec = self._utt_samples / float(self.samplerate)
-                if self._silence_sec >= pause or utt_sec >= self._max_utt_sec:
-                    if utt_sec >= self._max_utt_sec:
-                        self._debug(f"utt: force-end after {utt_sec:.1f}s")
+                max_utt = self._max_utt_sec if self.listening_active else self._max_utt_cmd_sec
+                if self._silence_sec >= pause or utt_sec >= max_utt:
+                    if utt_sec >= max_utt:
+                        self._debug(f"utt: force-end after {utt_sec:.1f}s (max={max_utt})")
                     self._end_utterance()
             return
 
@@ -1181,9 +1284,10 @@ class LiveVoskRecognition:
             self._begin_utterance(raw_frame)
         else:
             self._feed_utt(raw_frame)
+            max_utt = self._max_utt_sec if self.listening_active else self._max_utt_cmd_sec
             utt_sec = self._utt_samples / float(self.samplerate)
-            if utt_sec >= self._max_utt_sec:
-                self._debug(f"utt: force-end after {utt_sec:.1f}s")
+            if utt_sec >= max_utt:
+                self._debug(f"utt: force-end after {utt_sec:.1f}s (max={max_utt})")
                 self._end_utterance()
                 return
         self._push_preroll(raw_frame)
