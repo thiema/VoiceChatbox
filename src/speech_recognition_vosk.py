@@ -328,27 +328,24 @@ class LiveVoskRecognition:
         self.vad_speech_ratio = max(0.05, min(float(vad_speech_ratio), 0.9))
         self._webrtcvad = None
         if self.vad_use_webrtcvad:
-            try:
-                # webrtcvad imports pkg_resources (setuptools) at module load
-                import pkg_resources  # noqa: F401
-                import webrtcvad  # type: ignore
-                self._webrtcvad = webrtcvad.Vad(self.vad_webrtcvad_mode)
-            except ModuleNotFoundError as e:
-                missing = str(e)
+            from .webrtcvad_loader import load_webrtcvad
+
+            self._webrtcvad, vad_err = load_webrtcvad(self.vad_webrtcvad_mode)
+            if self._webrtcvad is None:
                 hint = ""
-                if "pkg_resources" in missing or "setuptools" in missing:
-                    hint = " — fix: pip install setuptools"
-                elif "webrtcvad" in missing:
-                    hint = " — fix: pip install webrtcvad setuptools"
-                print(f"webrtcvad: unavailable ({e}){hint}. Falling back to RMS VAD.")
+                if vad_err and "pkg_resources" in (vad_err or ""):
+                    hint = (
+                        " — setuptools>=82 removed pkg_resources; "
+                        "update src/webrtcvad_loader.py or: pip install 'setuptools<82'"
+                    )
+                elif vad_err and "webrtcvad" in (vad_err or ""):
+                    hint = " — fix: pip install webrtcvad"
+                print(f"webrtcvad: unavailable ({vad_err}){hint}. Falling back to RMS VAD.")
                 if self.debug_logs:
-                    self._debug(f"webrtcvad: unavailable ({e}){hint}")
-                self._webrtcvad = None
-            except Exception as e:
-                print(f"webrtcvad: unavailable ({e}). Falling back to RMS VAD.")
-                if self.debug_logs:
-                    self._debug(f"webrtcvad: unavailable ({e})")
-                self._webrtcvad = None
+                    self._debug(f"webrtcvad: unavailable ({vad_err}){hint}")
+            elif self.debug_logs:
+                src = getattr(self._webrtcvad, "_pkg_resources_source", "?")
+                self._debug(f"webrtcvad: ready mode={self.vad_webrtcvad_mode} pkg_resources={src}")
         self._noise_floor = 0.0
         # Continuous capture / utterance streaming state
         self._audio_q: queue.Queue | None = None
