@@ -11,7 +11,8 @@ sudo apt-get install -y \
   ffmpeg \
   i2c-tools \
   git \
-  build-essential
+  build-essential \
+  swig
 
 echo "[2/6] Python venv anlegen..."
 cd "$PROJECT_DIR"
