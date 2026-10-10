@@ -153,39 +153,38 @@ class VoskSpeechRecognition:
         rec.SetWords(False)
         return rec
 
-    def feed_stream(self, rec, audio_data: np.ndarray) -> tuple[Optional[str], Optional[str]]:
+    def feed_stream(
+        self,
+        rec,
+        audio_data: np.ndarray,
+        want_partial: bool = True,
+    ) -> tuple[Optional[str], Optional[str]]:
         """
         Feed int16 mono 16 kHz audio into an open recognizer.
 
         Returns:
             (accepted_text, partial_text) — accepted_text when AcceptWaveform
-            returns True; partial_text from PartialResult otherwise (may be None).
+            returns True; partial_text from PartialResult only if want_partial.
         """
         if audio_data is None or audio_data.size == 0:
             return None, None
         if audio_data.dtype != np.int16:
             audio_data = audio_data.astype(np.int16)
         audio_bytes = audio_data.tobytes()
-        # ~0.25 s slices (4000 frames * 2 bytes)
-        chunk_size = 4000 * 2
         accepted_parts: list[str] = []
         partial: Optional[str] = None
         try:
-            for i in range(0, len(audio_bytes), chunk_size):
-                chunk = audio_bytes[i : i + chunk_size]
-                if not chunk:
-                    break
-                if rec.AcceptWaveform(chunk):
-                    result = json.loads(rec.Result())
-                    if result.get("text"):
-                        accepted_parts.append(result["text"])
-                    partial = None
-                else:
-                    try:
-                        partial_result = json.loads(rec.PartialResult())
-                        partial = (partial_result.get("partial") or "").strip() or None
-                    except Exception:
-                        pass
+            # One AcceptWaveform call per feed for small realtime frames
+            if rec.AcceptWaveform(audio_bytes):
+                result = json.loads(rec.Result())
+                if result.get("text"):
+                    accepted_parts.append(result["text"])
+            elif want_partial:
+                try:
+                    partial_result = json.loads(rec.PartialResult())
+                    partial = (partial_result.get("partial") or "").strip() or None
+                except Exception:
+                    pass
         except Exception as e:
             print(f"Fehler bei Vosk feed_stream: {e}")
             return None, None
@@ -365,6 +364,20 @@ class LiveVoskRecognition:
         self._agc_min_rms = max(0.004, float(vad_rms_threshold) * 0.5)
         self._last_partial = ""
         self._debug_last_ts: dict[str, float] = {}
+        self._max_utt_sec = 8.0
+        self._partial_interval_sec = 0.35
+        self._last_partial_ts = 0.0
+        self._overflow_count = 0
+        self._hpf_b = None
+        self._hpf_a = None
+        self._hpf_zi = None
+        try:
+            from scipy import signal as _sig
+            nyq = self.samplerate / 2.0
+            self._hpf_b, self._hpf_a = _sig.butter(2, 80.0 / nyq, btype="high", analog=False)
+            self._hpf_zi = _sig.lfilter_zi(self._hpf_b, self._hpf_a)
+        except Exception:
+            self._hpf_b = self._hpf_a = self._hpf_zi = None
     
     def set_text_callback(self, callback: Callable[[str], None]) -> None:
         """Setze Callback-Funktion, die bei neuem Text aufgerufen wird."""
@@ -405,17 +418,17 @@ class LiveVoskRecognition:
         return (audio_float * 32767.0).astype(np.int16)
     
     def _apply_highpass_filter(self, audio: np.ndarray, cutoff: float = 80.0) -> np.ndarray:
-        """Einfacher High-Pass Filter um tiefe Frequenzen zu entfernen."""
+        """Streaming high-pass (lfilter). Avoid filtfilt — too slow for 30 ms frames."""
+        if self._hpf_b is None or audio.size == 0:
+            return audio
         try:
             from scipy import signal
-            nyquist = self.samplerate / 2
-            normal_cutoff = cutoff / nyquist
-            b, a = signal.butter(2, normal_cutoff, btype='high', analog=False)
             audio_float = audio.astype(np.float32) / 32768.0
-            filtered = signal.filtfilt(b, a, audio_float)
-            return (filtered * 32767.0).astype(np.int16)
-        except ImportError:
-            # Falls scipy nicht verfügbar, keine Filterung
+            zi = self._hpf_zi * float(audio_float[0]) if self._hpf_zi is not None else None
+            filtered, zo = signal.lfilter(self._hpf_b, self._hpf_a, audio_float, zi=zi)
+            self._hpf_zi = zo
+            return (np.clip(filtered, -1.0, 1.0) * 32767.0).astype(np.int16)
+        except Exception:
             return audio
     
     def _detect_speech(self, audio: np.ndarray, threshold: float = 0.01) -> bool:
@@ -985,14 +998,21 @@ class LiveVoskRecognition:
             return self.samplerate
 
     def _audio_callback(self, indata, frames, time_info, status) -> None:  # noqa: ARG002
-        if status and self.debug_logs:
-            self._debug(f"stream status: {status}")
+        if status:
+            # input overflow = main loop too slow; count + throttle log
+            self._overflow_count += 1
+            self._debug_throttle(
+                "stream_status",
+                f"stream status: {status} (overflows={self._overflow_count})",
+                2.0,
+            )
         if self._audio_q is None:
             return
         try:
             mono = indata[:, 0].copy() if indata.ndim > 1 else indata.copy()
             self._audio_q.put_nowait(mono)
         except queue.Full:
+            # Drop oldest to stay near realtime
             try:
                 self._audio_q.get_nowait()
             except queue.Empty:
@@ -1006,13 +1026,41 @@ class LiveVoskRecognition:
     def _to_asr_rate(self, audio: np.ndarray) -> np.ndarray:
         if self._capture_sr == self.samplerate or audio.size == 0:
             return audio.astype(np.int16, copy=False)
+        # Fast integer decimation for common 48k→16k / 44.1≈16k paths
+        if self._capture_sr == 48000 and self.samplerate == 16000:
+            return np.asarray(audio[::3], dtype=np.int16)
+        if self._capture_sr == 44100 and self.samplerate == 16000:
+            # ~2.756x; use stride-2 then light poly if available
+            stepped = audio[::2]
+            if resample_poly is None:
+                return np.asarray(stepped[::1], dtype=np.int16)[: int(len(audio) * 16000 / 44100)]
+            return resample_poly(stepped, 16000, 22050).astype(np.int16)
         if resample_poly is None:
-            # Nearest-neighbor fallback
             ratio = self.samplerate / float(self._capture_sr)
             idx = (np.arange(int(len(audio) * ratio)) / ratio).astype(np.int64)
             idx = np.clip(idx, 0, len(audio) - 1)
             return audio[idx].astype(np.int16)
         return resample_poly(audio, self.samplerate, self._capture_sr).astype(np.int16)
+
+    def _drop_audio_backlog(self, keep_blocks: int = 8) -> int:
+        """Drop queued mic blocks so we stay near realtime. Returns dropped count."""
+        if self._audio_q is None:
+            return 0
+        dropped = 0
+        # Leave keep_blocks (~keep_blocks * 30ms) for continuity
+        while self._audio_q.qsize() > keep_blocks:
+            try:
+                self._audio_q.get_nowait()
+                dropped += 1
+            except queue.Empty:
+                break
+        if dropped:
+            self._debug_throttle(
+                "backlog",
+                f"audio: dropped {dropped} backlog blocks (keep={keep_blocks})",
+                1.0,
+            )
+        return dropped
 
     def _push_preroll(self, frame: np.ndarray) -> None:
         if self._preroll_samples <= 0:
@@ -1042,6 +1090,14 @@ class LiveVoskRecognition:
         self._silence_sec = 0.0
         self._speech_active = True
         self._last_partial = ""
+        self._last_partial_ts = 0.0
+        # Reset streaming HPF state per utterance
+        if self._hpf_b is not None:
+            try:
+                from scipy import signal as _sig
+                self._hpf_zi = _sig.lfilter_zi(self._hpf_b, self._hpf_a)
+            except Exception:
+                pass
         preroll = self._preroll_concat()
         if preroll.size:
             self._feed_utt(preroll)
@@ -1055,12 +1111,17 @@ class LiveVoskRecognition:
         if self.enable_audio_processing:
             audio = self._apply_highpass_filter(audio, cutoff=80.0)
             audio = self._normalize_audio(audio)
-        accepted, partial = self.vosk.feed_stream(self._utt_rec, audio)
+        now = time.time()
+        want_partial = (now - self._last_partial_ts) >= self._partial_interval_sec
+        accepted, partial = self.vosk.feed_stream(
+            self._utt_rec, audio, want_partial=want_partial
+        )
         self._utt_samples += len(frame)
         if accepted:
             self._utt_accepted.append(accepted)
-        if partial and partial != self._last_partial:
+        if want_partial and partial and partial != self._last_partial:
             self._last_partial = partial
+            self._last_partial_ts = now
             display = " ".join(self._utt_accepted + [partial]).strip()
             if display:
                 self._update_display(display)
@@ -1109,9 +1170,12 @@ class LiveVoskRecognition:
             if self._speech_active and self._utt_rec is not None:
                 pause = self.pause_duration if self.pause_duration else 1.2
                 self._silence_sec += frame_sec
-                # Keep feeding trailing silence briefly so decoder can settle
+                # Feed trailing silence without heavy OLED partials
                 self._feed_utt(raw_frame)
-                if self._silence_sec >= pause:
+                utt_sec = self._utt_samples / float(self.samplerate)
+                if self._silence_sec >= pause or utt_sec >= self._max_utt_sec:
+                    if utt_sec >= self._max_utt_sec:
+                        self._debug(f"utt: force-end after {utt_sec:.1f}s")
                     self._end_utterance()
             return
 
@@ -1120,6 +1184,11 @@ class LiveVoskRecognition:
             self._begin_utterance(raw_frame)
         else:
             self._feed_utt(raw_frame)
+            utt_sec = self._utt_samples / float(self.samplerate)
+            if utt_sec >= self._max_utt_sec:
+                self._debug(f"utt: force-end after {utt_sec:.1f}s")
+                self._end_utterance()
+                return
         self._push_preroll(raw_frame)
 
     def start(self, oled: Optional[OledDisplay] = None) -> None:
@@ -1159,7 +1228,7 @@ class LiveVoskRecognition:
         print("Sprich jetzt...")
 
         blocksize = max(1, int(self._capture_sr * (self.vad_webrtcvad_frame_ms / 1000.0)))
-        self._audio_q = queue.Queue(maxsize=200)
+        self._audio_q = queue.Queue(maxsize=40)
         try:
             self._input_stream = sd.InputStream(
                 samplerate=self._capture_sr,
@@ -1205,6 +1274,20 @@ class LiveVoskRecognition:
                     self._process_frame(raw.astype(np.int16))
                     continue
 
+                # Stay near realtime: if behind, drop old blocks (prevents 40s+ stuck utts)
+                if self._utt_rec is None:
+                    self._drop_audio_backlog(keep_blocks=6)
+                else:
+                    # During utterance keep a bit more context, but never > ~0.6s backlog
+                    self._drop_audio_backlog(keep_blocks=20)
+                    qsz = self._audio_q.qsize() if self._audio_q else 0
+                    if qsz > 40:
+                        # Hopelessly behind — end utterance and resync
+                        self._debug(f"audio: resync (qsize={qsz}), ending utterance")
+                        self._end_utterance()
+                        self._drain_audio_queue()
+                        continue
+
                 try:
                     block = self._audio_q.get(timeout=0.2)
                 except queue.Empty:
@@ -1217,7 +1300,8 @@ class LiveVoskRecognition:
                 for i in range(0, len(asr) - frame_len + 1, frame_len):
                     self._process_frame(asr[i : i + frame_len])
                 rem = len(asr) % frame_len
-                if rem:
+                if rem and rem >= frame_len // 2:
+                    # Ignore tiny remainder to avoid extra Vosk calls
                     self._process_frame(asr[-rem:])
         except KeyboardInterrupt:
             print("\nBeendet.")
