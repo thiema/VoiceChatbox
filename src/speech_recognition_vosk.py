@@ -347,11 +347,25 @@ class LiveVoskRecognition:
         self._min_utt_sec = 0.35
         self._agc_target_rms = 10 ** (-18.0 / 20.0)  # -18 dBFS
         self._agc_max_gain = 10 ** (15.0 / 20.0)  # +15 dB cap
+        # Don't boost near-silence / noise floor (prevents hiss amplification)
+        self._agc_min_rms = max(0.004, float(vad_rms_threshold) * 0.5)
         self._last_partial = ""
+        self._debug_last_ts: dict[str, float] = {}
     
     def set_text_callback(self, callback: Callable[[str], None]) -> None:
         """Setze Callback-Funktion, die bei neuem Text aufgerufen wird."""
         self.text_callback = callback
+
+    def _debug_throttle(self, key: str, msg: str, interval_sec: float = 1.0) -> None:
+        """Rate-limit high-frequency debug lines (VAD/AGC per frame)."""
+        if not self.debug_logs:
+            return
+        now = time.time()
+        last = self._debug_last_ts.get(key, 0.0)
+        if (now - last) < interval_sec:
+            return
+        self._debug_last_ts[key] = now
+        self._debug(msg)
     
     def _normalize_audio(self, audio: np.ndarray) -> np.ndarray:
         """RMS-Ziel-AGC mit Gain-Cap (kein Peak-Normalize)."""
@@ -362,10 +376,18 @@ class LiveVoskRecognition:
         rms = float(np.sqrt(np.mean(audio_float ** 2)))
         if rms < 1e-6:
             return audio
+        # Skip AGC on noise/silence — max-gain on hiss hurts Vosk
+        if rms < self._agc_min_rms:
+            self._debug_throttle(
+                "agc_skip",
+                f"agc: skip rms={rms:.6f} < min={self._agc_min_rms:.6f}",
+                2.0,
+            )
+            return (np.clip(audio_float, -1.0, 1.0) * 32767.0).astype(np.int16)
         gain = min(self._agc_target_rms / rms, self._agc_max_gain)
         audio_float = np.clip(audio_float * gain, -1.0, 1.0)
-        if self.debug_logs and gain > 1.01:
-            self._debug(f"agc: rms={rms:.6f} gain={gain:.2f}x")
+        if gain > 1.01:
+            self._debug_throttle("agc", f"agc: rms={rms:.6f} gain={gain:.2f}x", 1.0)
         return (audio_float * 32767.0).astype(np.int16)
     
     def _apply_highpass_filter(self, audio: np.ndarray, cutoff: float = 80.0) -> np.ndarray:
@@ -388,7 +410,7 @@ class LiveVoskRecognition:
             return self._detect_speech_webrtcvad(audio)
         # Berechne RMS (Root Mean Square) für Signalpegel
         audio_float = audio.astype(np.float32) / 32768.0
-        rms = np.sqrt(np.mean(audio_float ** 2))
+        rms = float(np.sqrt(np.mean(audio_float ** 2)))
         base_threshold = self.vad_rms_threshold if self.vad_rms_threshold > 0 else threshold
         # Update noise floor with a slow EMA when below base threshold
         if self.vad_noise_alpha > 0 and rms < base_threshold:
@@ -398,14 +420,24 @@ class LiveVoskRecognition:
                 self._noise_floor = (1.0 - self.vad_noise_alpha) * self._noise_floor + self.vad_noise_alpha * rms
         effective_threshold = max(base_threshold, self._noise_floor * self.vad_noise_multiplier)
         if self._speech_active:
-            effective_threshold *= self.vad_hangover_factor
-        if self.debug_logs:
-            self._debug(
-                f"vad: rms={rms:.6f} base={base_threshold:.6f} "
-                f"noise={self._noise_floor:.6f} mult={self.vad_noise_multiplier:.2f} "
-                f"hangover={self.vad_hangover_factor:.2f} th={effective_threshold:.6f}"
+            # Hangover may lower the gate, but never into the noise floor
+            lowered = effective_threshold * self.vad_hangover_factor
+            noise_floor = max(self._noise_floor, 1e-6)
+            effective_threshold = max(
+                lowered,
+                noise_floor * 1.5,
+                base_threshold * 0.5,
             )
-        return rms > effective_threshold
+        is_speech = rms > effective_threshold
+        self._debug_throttle(
+            "vad_rms",
+            f"vad: rms={rms:.6f} base={base_threshold:.6f} "
+            f"noise={self._noise_floor:.6f} mult={self.vad_noise_multiplier:.2f} "
+            f"hangover={self.vad_hangover_factor:.2f} th={effective_threshold:.6f} "
+            f"speech={is_speech}",
+            1.0,
+        )
+        return is_speech
 
     def _detect_speech_webrtcvad(self, audio: np.ndarray) -> bool:
         if audio.size == 0:
@@ -433,12 +465,15 @@ class LiveVoskRecognition:
         threshold = self.vad_speech_ratio
         if self._speech_active:
             threshold = max(0.05, threshold * self.vad_hangover_factor)
-        if self.debug_logs:
-            self._debug(
-                f"vad: webrtcvad frames={total_frames} speech={speech_frames} "
-                f"ratio={ratio:.2f} th={threshold:.2f} active={self._speech_active}"
-            )
-        return ratio >= threshold
+        is_speech = ratio >= threshold
+        self._debug_throttle(
+            "vad_webrtc",
+            f"vad: webrtcvad frames={total_frames} speech={speech_frames} "
+            f"ratio={ratio:.2f} th={threshold:.2f} active={self._speech_active} "
+            f"speech={is_speech}",
+            1.0,
+        )
+        return is_speech
     
     def _record_chunk(self) -> tuple[np.ndarray, np.ndarray]:
         """Nimmt einen Audio-Chunk auf und gibt (raw, processed) zurück."""
