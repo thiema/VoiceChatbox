@@ -82,45 +82,89 @@ def test_microphone(device_id=None, duration=3, samplerate=16000):
     
     return True
 
-def test_speaker(device_id=None, frequency=440, duration=2, samplerate=44100):
-    """Teste den Lautsprecher: Spiele einen Testton ab."""
+def test_speaker(
+    device_id=None,
+    frequency=440,
+    duration=2,
+    samplerate=44100,
+    auto: bool = False,
+    volume: float = 0.35,
+):
+    """Teste den Lautsprecher: Melodie über die gleiche Play-Pipeline wie die App."""
+    from .audio_io import play_wav_bytes, select_output_device, _tone_wav_bytes
+
     print(f"\n=== Lautsprecher-Test ===")
-    print(f"Gerät: {device_id if device_id is not None else 'Standard'}")
-    print(f"Frequenz: {frequency} Hz (Kammerton A)")
-    print(f"Dauer: {duration} Sekunden")
-    print("\nDu solltest jetzt einen Ton hören...\n")
-    
+    print(f"Gerät: {device_id if device_id is not None else 'Standard / .env'}")
+    print("Spiele Testmelodie (3 Töne steigend + langer Ton)...\n")
+
     try:
-        if device_id is not None:
-            device_info = sd.query_devices(device_id, kind='output')
-            print(f"Verwende: {device_info['name']}")
+        # Resolve name/id the same way as the main app
+        resolved = select_output_device(device_id, announce=True)
+        if resolved is not None:
+            device_info = sd.query_devices(resolved, kind="output")
+            print(f"Verwende: {device_info['name']} (id={resolved})")
             print(f"Kanäle: {device_info['max_output_channels']}")
             print(f"Sample Rate: {device_info['default_samplerate']} Hz\n")
-        
-        # Erzeuge Sinuston
-        t = np.linspace(0, duration, int(samplerate * duration), False)
-        tone = np.sin(2 * np.pi * frequency * t).astype(np.float32)
-        
-        # Spiele ab
+            device_id = resolved
+
+        # Distinctive ascending melody so the built-in speaker is easy to hear
+        melody = [
+            (523.25, 0.18),  # C5
+            (659.25, 0.18),  # E5
+            (783.99, 0.22),  # G5
+            (1046.5, 0.45),  # C6
+        ]
+        for freq, dur in melody:
+            wav = _tone_wav_bytes(
+                frequency=freq,
+                duration_sec=dur,
+                samplerate=48000,
+                volume=volume,
+            )
+            play_wav_bytes(wav, device=device_id, announce=False)
+            time.sleep(0.06)
+
+        # Extra longer tone via sounddevice (fallback path)
+        t = np.linspace(0, max(0.4, duration * 0.5), int(samplerate * max(0.4, duration * 0.5)), False)
+        tone = (np.sin(2 * np.pi * frequency * t) * volume).astype(np.float32)
+        fade = min(len(tone) // 10, int(0.02 * samplerate))
+        if fade > 0:
+            tone[:fade] *= np.linspace(0, 1, fade)
+            tone[-fade:] *= np.linspace(1, 0, fade)
         sd.play(tone, samplerate=samplerate, device=device_id)
         sd.wait()
-        
-        print("✓ Testton abgespielt!")
+
+        print("✓ Testtöne abgespielt!")
+        if auto:
+            print("Auto-Modus: bitte akustisch prüfen (kein Prompt).")
+            return True
         print("Hast du den Ton gehört? (j/n): ", end="")
         response = input().strip().lower()
-        if response == 'j' or response == 'y':
+        if response in ("j", "y", "ja", "yes"):
             print("✓ Lautsprecher funktioniert!")
             return True
-        else:
-            print("⚠️  Kein Ton gehört. Prüfe:")
-            print("   - Ist der Lautsprecher angeschlossen?")
-            print("   - Ist das richtige Gerät ausgewählt?")
-            print("   - Ist die Lautstärke aufgedreht?")
-            return False
-        
+        print("⚠️  Kein Ton gehört. Prüfe:")
+        print("   - AUDIO_OUTPUT_DEVICE in .env (Pironman/bcm/Headphones/Speaker)")
+        print("   - amixer / Systemlautstärke")
+        print("   - python -m src.audio_test --list")
+        return False
+
     except Exception as e:
         print(f"\n❌ Fehler: {e}")
         return False
+
+
+def run_speaker_test_from_settings(auto: bool = True) -> bool:
+    """Lautsprecher-Test mit AUDIO_OUTPUT_DEVICE aus .env (für Pironman/Service)."""
+    list_audio_devices()
+    try:
+        settings = load_settings()
+        device = settings.audio_output_device
+        print(f"\n.env AUDIO_OUTPUT_DEVICE={device!r}")
+    except Exception as e:
+        print(f"Hinweis: .env/Settings nicht geladen ({e}) — Standardgerät.")
+        device = None
+    return test_speaker(device_id=device, auto=auto)
 
 def test_record_and_playback(device_input=None, device_output=None, duration=3, samplerate=16000):
     """Teste Aufnahme und Wiedergabe: Recorde Audio und spiele es sofort ab."""
@@ -185,16 +229,27 @@ def run_audio_test():
         return
     
     if "--speaker" in sys.argv:
+        auto = "--auto" in sys.argv or "--yes" in sys.argv
         device_id = None
         if "--device" in sys.argv:
             try:
                 idx = sys.argv.index("--device")
-                device_id = int(sys.argv[idx + 1])
+                # allow numeric id or name fragment
+                raw = sys.argv[idx + 1]
+                device_id = int(raw) if raw.isdigit() else raw
             except (ValueError, IndexError):
                 print("❌ Ungültige Geräte-ID")
                 return
-        
-        test_speaker(device_id=device_id)
+        elif "--from-env" in sys.argv or device_id is None:
+            # Prefer .env output device (built-in / Pironman speaker)
+            try:
+                settings = load_settings()
+                device_id = settings.audio_output_device
+                print(f"Verwende AUDIO_OUTPUT_DEVICE aus .env: {device_id!r}")
+            except Exception:
+                pass
+
+        test_speaker(device_id=device_id, auto=auto)
         return
     
     if "--full" in sys.argv:
