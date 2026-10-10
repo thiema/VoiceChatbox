@@ -100,9 +100,22 @@ class SmartMultiLanguageVoskRecognition:
         self._webrtcvad = None
         if self.vad_use_webrtcvad:
             try:
+                import pkg_resources  # noqa: F401
                 import webrtcvad  # type: ignore
                 self._webrtcvad = webrtcvad.Vad(self.vad_webrtcvad_mode)
+            except ModuleNotFoundError as e:
+                hint = ""
+                missing = str(e)
+                if "pkg_resources" in missing or "setuptools" in missing:
+                    hint = " — fix: pip install setuptools"
+                elif "webrtcvad" in missing:
+                    hint = " — fix: pip install webrtcvad setuptools"
+                print(f"webrtcvad: unavailable ({e}){hint}. Falling back to RMS VAD.")
+                if self.debug_logs:
+                    self._debug(f"webrtcvad: unavailable ({e}){hint}")
+                self._webrtcvad = None
             except Exception as e:
+                print(f"webrtcvad: unavailable ({e}). Falling back to RMS VAD.")
                 if self.debug_logs:
                     self._debug(f"webrtcvad: unavailable ({e})")
                 self._webrtcvad = None

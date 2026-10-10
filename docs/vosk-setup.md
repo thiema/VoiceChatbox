@@ -156,7 +156,7 @@ VAD_HANGOVER_FACTOR=0.6
 # Vorlauf-Puffer in Sekunden, um Satzanfänge nicht zu verlieren.
 VAD_PREROLL_SEC=0.30
 
-# WebRTC VAD (robuster gegen Rauschen)
+# WebRTC VAD (robuster gegen Rauschen; braucht: pip install webrtcvad setuptools)
 VAD_USE_WEBRTCVAD=true
 # Aggressiveness: 0 (locker) .. 3 (streng); 1 = weicher für gesprochene Sprache
 VAD_WEBRTCVAD_MODE=1
